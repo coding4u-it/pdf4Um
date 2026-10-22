@@ -1,0 +1,45 @@
+project:
+  scope_path: "."
+  loc: 1309
+  languages: [Java]
+  git: true
+  structure:
+    "src/main/java/com/mycompany/pdf4um": "Java application source"
+    "src/main/java/com/mycompany/img": "Application image resources"
+  notes: "Small, single-module Maven Java desktop application. In-place structural MVC refactor; preserve framework, UI, and behavior. Initial working tree contains untracked .github/ and target/ entries that must be preserved."
+
+assessment:
+  change_type: rewrite
+  rationale: |
+    The user requests an in-place structural separation of the existing Java desktop
+    application into MVC responsibilities, without changing language, framework, UI,
+    or behavior. The repository is a small, single-module Maven Java project (1,309
+    Java LOC); source-level analysis will identify the current UI and behavior
+    boundaries before implementation.
+  transformations:
+    - fromStack: Java desktop application
+      fromStackVersion: null
+      toStack: Java MVC architecture
+      toStackVersion: null
+  grouping_needed: false
+  deep_planning: false
+
+progress_sync:
+  run_id: 97e4fbd0-5b7a-40ce-ac61-d121bf307f55
+  grouping_mode: none
+  execution_mode: undecided
+  plan_start_time: 2026-10-22T16:41:58Z
+  plan_completed_time: 2026-10-22T17:01:47Z
+  execution_start_time: null
+  execution_completed_time: null
+  validation_start_time: null
+  validation_completed_time: null
+  total_phases: 6
+  completed_phases: 0
+  total_modules: 1
+  completed_modules: 0
+  total_tasks: 6
+  completed_tasks: 0
+  total_commits: 1
+  build_verified: false
+  test_verified: false

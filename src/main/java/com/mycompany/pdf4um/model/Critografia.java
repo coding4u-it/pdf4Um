@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package com.mycompany.pdf4um;
+package com.mycompany.pdf4um.model;
 
 import java.util.Random;
 

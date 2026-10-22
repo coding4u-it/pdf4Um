@@ -1,0 +1,567 @@
+{
+  "schema": "clarification-questions/v1",
+  "generated_at": "2026-10-22T16:43:00Z",
+  "user_input": "Transform the project at /home/france/gitHub/pdf4Um into an appropriate MVC architecture, preserving existing behavior. Inspect the project and execute the refactor; validate with relevant tests/build where feasible. Ask a focused clarification only if the intended MVC scope cannot safely be inferred.",
+  "title": "Java Project MVC Refactor",
+  "assessment_snapshot": {
+    "intro": "Recon identifies a small Java Maven project with a possible desktop UI, but the precise MVC boundary cannot be established without source analysis:",
+    "bullets": [
+      "Approximately 1,309 LOC in one source module under src/main/java/com/mycompany/pdf4um, with image resources under com/mycompany/img",
+      "Desktop GUI presence is plausible from Main.java and bundled UI icon assets, but remains unconfirmed",
+      "No target Java or framework version is specified; the request calls for an MVC refactor in the existing workspace"
+    ]
+  },
+  "proposed_outcome": "Clarify the intended MVC scope and any framework or UI constraints, then refactor the existing Java application in place while preserving observable behavior and validating with relevant tests and a build.",
+  "scope": [
+    "frontend",
+    "backend",
+    "generic"
+  ],
+  "status": "answered",
+  "questions": [
+    {
+      "id": "F1",
+      "kit": "frontend",
+      "field": "target.framework",
+      "title": "Target UI framework",
+      "question": "Which UI framework and version should the MVC refactor target? If this is only a structural refactor, should it retain the project's existing Java UI framework and version?",
+      "importance": "required",
+      "impact": 5,
+      "recommended": "Keep the existing Java UI framework and version (identify from the project)",
+      "default": null,
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "Java Swing (specify Java version)",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "Keep the existing Java UI framework and version (identify from the project)",
+          "label": "Keep the existing Java UI framework and version (identify from the project)"
+        },
+        {
+          "value": "Java Swing (specify Java version)",
+          "label": "Java Swing (specify Java version)"
+        },
+        {
+          "value": "JavaFX (specify Java version)",
+          "label": "JavaFX (specify Java version)"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "F2",
+      "kit": "frontend",
+      "field": "target.component_library",
+      "title": "UI component library",
+      "question": "Should the MVC refactor keep the current UI components, or use a specific Java UI component library?",
+      "importance": "required",
+      "impact": 4,
+      "recommended": "Keep the existing UI components and assets",
+      "default": null,
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "Swing standard components",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "Keep the existing UI components and assets",
+          "label": "Keep the existing UI components and assets"
+        },
+        {
+          "value": "JavaFX standard controls",
+          "label": "JavaFX standard controls"
+        },
+        {
+          "value": "Swing standard components",
+          "label": "Swing standard components"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "F3",
+      "kit": "frontend",
+      "field": "visual.screenshots",
+      "title": "Current UI reference",
+      "question": "If the desktop UI is in scope, provide paths to screenshots or a recording of its current behavior and appearance. If no UI changes are intended, say so.",
+      "importance": "required",
+      "impact": 4,
+      "recommended": null,
+      "default": null,
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": null,
+        "source": "skipped"
+      },
+      "depends_on": null,
+      "type": "text",
+      "options": []
+    },
+    {
+      "id": "F4",
+      "kit": "frontend",
+      "field": "visual.design_system",
+      "title": "Visual design guidance",
+      "question": "What visual guidance should the refactor follow? For example, preserve the existing appearance and assets, or provide a design system/reference.",
+      "importance": "required",
+      "impact": 4,
+      "recommended": "Preserve the existing UI appearance and assets",
+      "default": "match existing pixel-by-pixel using extracted CSS custom properties",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "match existing pixel-by-pixel using extracted CSS custom properties",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "Preserve the existing UI appearance and assets",
+          "label": "Preserve the existing UI appearance and assets"
+        },
+        {
+          "value": "Follow a supplied design system or reference",
+          "label": "Follow a supplied design system or reference"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "F5",
+      "kit": "frontend",
+      "field": "compliance.accessibility",
+      "title": "Accessibility target",
+      "question": "Which accessibility standard should the UI meet, if applicable?",
+      "importance": "recommended",
+      "impact": 2,
+      "recommended": "WCAG 2.1 AA",
+      "default": "WCAG 2.1 AA",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "WCAG 2.1 AA",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "WCAG 2.1 AA",
+          "label": "WCAG 2.1 AA"
+        },
+        {
+          "value": "WCAG 2.2 AA",
+          "label": "WCAG 2.2 AA"
+        },
+        {
+          "value": "No additional accessibility target",
+          "label": "No additional accessibility target"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "F6",
+      "kit": "frontend",
+      "field": "compatibility.browsers",
+      "title": "Runtime compatibility",
+      "question": "What runtime or platform compatibility targets should be preserved for the UI?",
+      "importance": "recommended",
+      "impact": 2,
+      "recommended": null,
+      "default": "preserve current runtime compatibility",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "preserve current runtime compatibility",
+        "source": "default"
+      },
+      "depends_on": null,
+      "type": "text",
+      "options": []
+    },
+    {
+      "id": "F7",
+      "kit": "frontend",
+      "field": "responsive.breakpoints",
+      "title": "UI layout strategy",
+      "question": "Should the refactor preserve the current desktop layout, or is responsive/adaptive behavior also required?",
+      "importance": "recommended",
+      "impact": 2,
+      "recommended": "Preserve current layout and behavior",
+      "default": "preserve current layout and behavior",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "preserve current layout and behavior",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "Preserve current layout and behavior",
+          "label": "Preserve current layout and behavior"
+        },
+        {
+          "value": "Add responsive/adaptive behavior",
+          "label": "Add responsive/adaptive behavior"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "F8",
+      "kit": "frontend",
+      "field": "i18n.locales",
+      "title": "Supported languages",
+      "question": "Which languages/locales should remain supported?",
+      "importance": "optional",
+      "impact": 1,
+      "recommended": null,
+      "default": "preserve current locales; keep existing i18n library if present",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "preserve current locales; keep existing i18n library if present",
+        "source": "default"
+      },
+      "depends_on": null,
+      "type": "text",
+      "options": []
+    },
+    {
+      "id": "F9",
+      "kit": "frontend",
+      "field": "state_mgmt.preference",
+      "title": "State management",
+      "question": "Do you have a preference for how UI state should be managed?",
+      "importance": "optional",
+      "impact": 1,
+      "recommended": null,
+      "default": "preserve existing pattern if identifiable; otherwise use a minimal approach",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "preserve existing pattern if identifiable; otherwise use a minimal approach",
+        "source": "default"
+      },
+      "depends_on": null,
+      "type": "text",
+      "options": []
+    },
+    {
+      "id": "F10",
+      "kit": "frontend",
+      "field": "routing.preference",
+      "title": "Navigation strategy",
+      "question": "Should the refactor preserve the existing navigation strategy, or use another approach?",
+      "importance": "optional",
+      "impact": 1,
+      "recommended": null,
+      "default": "preserve existing navigation strategy",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "preserve existing navigation strategy",
+        "source": "default"
+      },
+      "depends_on": null,
+      "type": "text",
+      "options": []
+    },
+    {
+      "id": "B1",
+      "kit": "backend",
+      "field": "target.framework",
+      "title": "Java framework target",
+      "question": "Which backend/application framework and version should the refactor target? If this is only an MVC separation, should it retain the existing Java framework and version?",
+      "importance": "required",
+      "impact": 5,
+      "recommended": "Keep the existing Java framework and version (identify from the project)",
+      "default": null,
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "Keep the existing Java framework and version (identify from the project)",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "Keep the existing Java framework and version (identify from the project)",
+          "label": "Keep the existing Java framework and version (identify from the project)"
+        },
+        {
+          "value": "Java SE only; no additional framework",
+          "label": "Java SE only; no additional framework"
+        },
+        {
+          "value": "Spring Boot (specify version)",
+          "label": "Spring Boot (specify version)"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "B2",
+      "kit": "backend",
+      "field": "api.contract_preservation",
+      "title": "API compatibility",
+      "question": "If the application exposes APIs or service contracts, what compatibility policy should the refactor follow?",
+      "importance": "required",
+      "impact": 5,
+      "recommended": "must preserve",
+      "default": "must preserve",
+      "prefilled": true,
+      "prefilled_value": "must preserve",
+      "answer": {
+        "value": "must preserve",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "must preserve",
+          "label": "Must preserve all existing contracts"
+        },
+        {
+          "value": "can break with versioning",
+          "label": "Breaking changes allowed only with versioning"
+        },
+        {
+          "value": "can break",
+          "label": "Breaking changes allowed"
+        },
+        {
+          "value": "Not applicable; no external API/service contracts",
+          "label": "Not applicable; no external API/service contracts"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "B3",
+      "kit": "backend",
+      "field": "data.migration_strategy",
+      "title": "Data migration approach",
+      "question": "If the application has persistent data, should the refactor change its schema or storage, or leave data migration out of scope?",
+      "importance": "required",
+      "impact": 4,
+      "recommended": "no migration",
+      "default": "TBD / assess in research phase",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "no migration",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "no migration",
+          "label": "No migration; leave data storage/schema untouched"
+        },
+        {
+          "value": "in-place",
+          "label": "In-place schema changes"
+        },
+        {
+          "value": "dual-write",
+          "label": "Dual-write during transition"
+        },
+        {
+          "value": "new schema",
+          "label": "New schema with data migration"
+        },
+        {
+          "value": "TBD / assess in research phase",
+          "label": "Assess after examining the project"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "B4",
+      "kit": "backend",
+      "field": "auth.framework",
+      "title": "Authentication policy",
+      "question": "If authentication or authorization exists, should the refactor preserve the current mechanism?",
+      "importance": "recommended",
+      "impact": 2,
+      "recommended": null,
+      "default": "preserve existing auth mechanism; detect from codebase",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "preserve existing auth mechanism; detect from codebase",
+        "source": "default"
+      },
+      "depends_on": null,
+      "type": "text",
+      "options": []
+    },
+    {
+      "id": "B5",
+      "kit": "backend",
+      "field": "nfr.sla",
+      "title": "Performance expectations",
+      "question": "Are there performance or availability targets the refactor must maintain?",
+      "importance": "recommended",
+      "impact": 2,
+      "recommended": null,
+      "default": "match current production baseline; no regression",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "match current production baseline; no regression",
+        "source": "default"
+      },
+      "depends_on": null,
+      "type": "text",
+      "options": []
+    },
+    {
+      "id": "G1",
+      "kit": "generic",
+      "field": "success.definition",
+      "title": "Definition of success",
+      "question": "What should count as a successful MVC refactor?",
+      "importance": "required",
+      "impact": 5,
+      "recommended": null,
+      "default": "feature parity with the current system; all existing user-facing behaviors preserved",
+      "prefilled": true,
+      "prefilled_value": "Preserve existing behavior while refactoring the project into an appropriate MVC architecture",
+      "answer": {
+        "value": "Preserve existing behavior while refactoring the project into an appropriate MVC architecture",
+        "source": "user"
+      },
+      "depends_on": null,
+      "type": "text",
+      "options": []
+    },
+    {
+      "id": "G2",
+      "kit": "generic",
+      "field": "out_of_scope",
+      "title": "Out-of-scope boundaries",
+      "question": "Are there files, components, or behaviors that must not be changed?",
+      "importance": "recommended",
+      "impact": 2,
+      "recommended": null,
+      "default": "no explicit exclusions; infer from project structure",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "no explicit exclusions; infer from project structure",
+        "source": "default"
+      },
+      "depends_on": null,
+      "type": "text",
+      "options": []
+    },
+    {
+      "id": "G3",
+      "kit": "generic",
+      "field": "existing_tests.posture",
+      "title": "Existing test policy",
+      "question": "How should existing tests be treated during the refactor?",
+      "importance": "recommended",
+      "impact": 3,
+      "recommended": "must pass",
+      "default": "must pass",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "must pass",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "must pass",
+          "label": "Must pass; preserve existing tests"
+        },
+        {
+          "value": "can rewrite",
+          "label": "May replace with equivalent coverage"
+        },
+        {
+          "value": "ignore",
+          "label": "Ignore outdated tests and write new tests"
+        },
+        {
+          "value": "partial: specify suites",
+          "label": "Require only specified suites"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "G4",
+      "kit": "generic",
+      "field": "target.output_location",
+      "title": "Refactor location",
+      "question": "Where should the refactored code be placed?",
+      "importance": "required",
+      "impact": 4,
+      "recommended": "in-place",
+      "default": "new sibling directory: pdf4Um-new",
+      "prefilled": true,
+      "prefilled_value": "in-place",
+      "answer": {
+        "value": "in-place",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "pdf4Um-new",
+          "label": "New sibling directory: pdf4Um-new"
+        },
+        {
+          "value": "in-place",
+          "label": "In the existing workspace (in-place)"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "G5",
+      "kit": "generic",
+      "field": "constraints.additional",
+      "title": "Additional constraints",
+      "question": "Any additional requirements, exclusions, dependencies, compliance rules, or operational constraints?",
+      "importance": "optional",
+      "impact": 2,
+      "recommended": null,
+      "default": "None beyond the decisions listed in this specification.",
+      "prefilled": true,
+      "prefilled_value": "None beyond the decisions listed in this specification.",
+      "answer": {
+        "value": "None beyond the decisions listed in this specification.",
+        "source": "user"
+      },
+      "depends_on": null,
+      "type": "text",
+      "options": []
+    }
+  ]
+}

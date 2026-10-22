@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import com.mycompany.pdf4um.controller.Pdf4UmController;
 import javax.swing.JOptionPane;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
@@ -17,18 +18,14 @@ import javax.swing.filechooser.FileNameExtensionFilter;
  * @author france
  */
 public class Main extends javax.swing.JFrame {
-    PdfTools objPdf;
+    private final Pdf4UmController controller = new Pdf4UmController();
     File[] listFiles;
-    String pass="";
-    FileOperazioni objFile, objFile2, objFileTxt;
-    Critografia objCrit=new Critografia();
         
     /**
      * Creates new form Main
      */
     public Main() {
         initComponents();
-        objPdf=new PdfTools();
         panel(false,false,false,false);
     }
 
@@ -631,6 +628,7 @@ public class Main extends javax.swing.JFrame {
 
     private void fchSelectActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_fchSelectActionPerformed
         listFiles = fchSelect.getSelectedFiles();
+        controller.setSelectedFiles(listFiles);
         for(File ff:listFiles)
             txaView.append(ff.getName()+"\n");
         btnCancel.setEnabled(true);
@@ -639,6 +637,8 @@ public class Main extends javax.swing.JFrame {
 
     private void btnCancelActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnCancelActionPerformed
         txaView.setText("");
+        listFiles = new File[0];
+        controller.setSelectedFiles(listFiles);
     }//GEN-LAST:event_btnCancelActionPerformed
 
     private void rbCustomActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_rbCustomActionPerformed
@@ -685,7 +685,7 @@ public class Main extends javax.swing.JFrame {
 
     private void btnConfermaActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnConfermaActionPerformed
         panel(true,false,false,false);
-        pass=txtPassword.getText();
+        controller.setPassword(txtPassword.getText());
         txtPassword.setText("");
     }//GEN-LAST:event_btnConfermaActionPerformed
 
@@ -715,62 +715,48 @@ public class Main extends javax.swing.JFrame {
     }//GEN-LAST:event_mniSelectActionPerformed
 
     private void mniSplitActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_mniSplitActionPerformed
-        int numero=1;
-        if (listFiles.length>1)
-            JOptionPane.showMessageDialog(rootPane, "Devi selezionare un solo file!", "Attenzione", JOptionPane.WARNING_MESSAGE); 
-        else{
-            if(rbSplitCome.isSelected())
-                numero=Integer.parseInt(txfNumb.getText());
-            try {
-                objPdf.split(listFiles[0], numero);
-        } catch (IOException ex) {
-                Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-            }
+        try {
+            controller.split(rbSplitCome.isSelected(), txfNumb.getText());
             JOptionPane.showMessageDialog(rootPane, "Split Eseguito", "Esito", JOptionPane.INFORMATION_MESSAGE);
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(rootPane, ex.getMessage(), "Attenzione", JOptionPane.WARNING_MESSAGE);
+        } catch (IOException ex) {
+            showOperationError(ex);
         }
     }//GEN-LAST:event_mniSplitActionPerformed
 
     private void mniMergeActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_mniMergeActionPerformed
-        if(listFiles.length<2)
-            JOptionPane.showMessageDialog(rootPane, "Devi selezionare almeno due file!", "Attenzione", JOptionPane.WARNING_MESSAGE);
-        else{
-            try {
-                objPdf.merge(listFiles);
-            } catch (IOException ex) {
-                Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-            }
+        try {
+            controller.merge();
             JOptionPane.showMessageDialog(rootPane, "Merge Eseguito", "Esito", JOptionPane.INFORMATION_MESSAGE);
-        }       
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(rootPane, ex.getMessage(), "Attenzione", JOptionPane.WARNING_MESSAGE);
+        } catch (IOException ex) {
+            showOperationError(ex);
+        }
     }//GEN-LAST:event_mniMergeActionPerformed
 
     private void mniRenameActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_mniRenameActionPerformed
-        int conta=sldCasuali.getValue();
-        String tmp="";
-        String crit;
-        objFile=new FileOperazioni();
-        if (rbElenco.isSelected())
-            for(File ff:listFiles)
-                objFile.rinominaFile(ff,txtRename.getText(),conta++);
-        else{
-            for(File ff:listFiles){
-                crit=objCrit.generaCasuali(sldCasuali.getValue(),chbCrit.isSelected());
-                tmp+=objFile.rinominaFileCasuale(ff,crit);
-            }
-            objFile2=new FileOperazioni("esporta.csv");
-            objFile2.scrittura(tmp,false);
+        try {
+            controller.rename(rbElenco.isSelected(), txtRename.getText(), sldCasuali.getValue(),
+                    sldCasuali.getValue(), chbCrit.isSelected());
+            JOptionPane.showMessageDialog(rootPane, "Modifica Eseguita!", "Esito", JOptionPane.INFORMATION_MESSAGE);
+            btnCancel.doClick();
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(rootPane, ex.getMessage(), "Attenzione", JOptionPane.WARNING_MESSAGE);
         }
-        JOptionPane.showMessageDialog(rootPane, "Modifica Eseguita!", "Esito", JOptionPane.INFORMATION_MESSAGE);
-        btnCancel.doClick();
     }//GEN-LAST:event_mniRenameActionPerformed
 
     private void mniCriptActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_mniCriptActionPerformed
-        for(File ff:listFiles)
-            try {
-                objPdf.criptPDF(ff, pass, cbxOpen.isSelected(),cbxPrint.isSelected(),cbxCopy.isSelected(),cbxModify.isSelected(),cbxAssembly.isSelected());
-                JOptionPane.showMessageDialog(rootPane, "File Criptato", "Esito", JOptionPane.INFORMATION_MESSAGE);
-            } catch (IOException ex) {
-                Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-            }
+        try {
+            controller.encrypt(cbxOpen.isSelected(), cbxPrint.isSelected(), cbxCopy.isSelected(),
+                    cbxModify.isSelected(), cbxAssembly.isSelected());
+            JOptionPane.showMessageDialog(rootPane, "File Criptato", "Esito", JOptionPane.INFORMATION_MESSAGE);
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(rootPane, ex.getMessage(), "Attenzione", JOptionPane.WARNING_MESSAGE);
+        } catch (IOException ex) {
+            showOperationError(ex);
+        }
     }//GEN-LAST:event_mniCriptActionPerformed
 
     private void cbxOpenActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cbxOpenActionPerformed
@@ -798,19 +784,21 @@ public class Main extends javax.swing.JFrame {
     }//GEN-LAST:event_txtPasswordMouseClicked
 
     private void mniTextActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_mniTextActionPerformed
-        if(listFiles.length>1)
-            JOptionPane.showMessageDialog(rootPane, "Devi selezionare un solo file!", "Attenzione", JOptionPane.WARNING_MESSAGE);
-        else{
-            objFileTxt=new FileOperazioni();
-            objFileTxt.setNomeFile(listFiles[0].getPath().replace(".pdf", "_text.txt"));
-            try {
-                objFileTxt.scritturaS(objPdf.strip(listFiles[0]));//scrittura nuovo file con lo strip del testo.
-            } catch (IOException ex) {
-                Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-            }
+        try {
+            controller.extractText();
             JOptionPane.showMessageDialog(rootPane, "Testo estratto e salvato nel file di testo", "Esito", JOptionPane.INFORMATION_MESSAGE);
-        }       
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(rootPane, ex.getMessage(), "Attenzione", JOptionPane.WARNING_MESSAGE);
+        } catch (IOException ex) {
+            showOperationError(ex);
+        }
     }//GEN-LAST:event_mniTextActionPerformed
+
+    private void showOperationError(IOException error) {
+        Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, error);
+        JOptionPane.showMessageDialog(rootPane, "Operazione non riuscita: " + error.getMessage(),
+                "Errore", JOptionPane.ERROR_MESSAGE);
+    }
 
     /**
      * @param args the command line arguments

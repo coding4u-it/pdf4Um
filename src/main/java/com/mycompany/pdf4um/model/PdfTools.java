@@ -3,14 +3,11 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package com.mycompany.pdf4um;
+package com.mycompany.pdf4um.model;
 
 import java.util.List;
 import java.io.File;
 import java.io.IOException;
-import java.util.Iterator;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -104,29 +101,29 @@ public class PdfTools {
      * @throws java.io.IOException
     */
     public void split(File sourceFile, int pag) throws IOException{
-        try {
-            // load pdf file
-            doc = PDDocument.load(sourceFile);
-        } catch (IOException ex) {
-            Logger.getLogger(PdfTools.class.getName()).log(Level.SEVERE, null, ex);
+        Splitter splitter = new Splitter();
+        splitter.setSplitAtPage(pag);
+        try (PDDocument source = PDDocument.load(sourceFile)) {
+            List<PDDocument> pages = splitter.split(source);
+            try {
+                int i = 0;
+                String nome = "_000";
+                for (PDDocument part : pages) {
+                    i++;
+                    if (i == 10) {
+                        nome = "_00";
+                    }
+                    if (i == 100) {
+                        nome = "_0";
+                    }
+                    part.save(sourceFile.getPath().replace(ESTENSIONE, "") + nome + i + ESTENSIONE);
+                }
+            } finally {
+                for (PDDocument part : pages) {
+                    part.close();
+                }
+            }
         }
-          Splitter splitter = new Splitter(); // split at page
-          splitter.setSplitAtPage(pag);  // split the pages of a PDF document
-          List<PDDocument> Pages = splitter.split(doc);   // Creating an iterator 
-          Iterator<PDDocument> iterator = Pages.listIterator();  
-          int i = 0;
-          String nome="_000";
-          while(iterator.hasNext()) {
-             i++; 
-             PDDocument pd = iterator.next();
-             if (i==10)
-                 nome="_00";
-             if (i==100)
-                 nome="_0";
-             // provide destination path to the PDF split
-             pd.save(sourceFile.getPath().replace(ESTENSIONE, "")+nome+i+ESTENSIONE);
-          }
-          doc.close();
     }
     
     /**
@@ -189,14 +186,10 @@ public class PdfTools {
      * @param sourceFile 
      * @return  
      */
-    public String strip(File sourceFile){
-        String text="";
-        try {
-            doc = PDDocument.load(sourceFile);
-            text = new PDFTextStripper().getText(doc);            
-            } catch (IOException e) {
+    public String strip(File sourceFile) throws IOException {
+        try (PDDocument document = PDDocument.load(sourceFile)) {
+            return new PDFTextStripper().getText(document);
         }
-        return text;
     }
     
     /**

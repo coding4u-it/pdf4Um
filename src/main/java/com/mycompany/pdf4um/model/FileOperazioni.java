@@ -1,4 +1,4 @@
-package com.mycompany.pdf4um;
+package com.mycompany.pdf4um.model;
 
 import java.io.*;
 import java.nio.file.Files;
