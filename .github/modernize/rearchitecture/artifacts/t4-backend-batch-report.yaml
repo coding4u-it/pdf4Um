@@ -1,0 +1,130 @@
+batch_id: "t4"
+completed_tasks:
+  - "t4"
+blocked_tasks: []
+files_changed:
+  t4:
+    - file: "README.md"
+      change_type: "modified"
+      description: "Documents the localhost-only launch, browser URL, port override, and upload limits."
+    - file: "pom.xml"
+      change_type: "modified"
+      description: "Adds JUnit 4 as a test-scoped dependency."
+    - file: "src/main/java/com/mycompany/pdf4um/Main.java"
+      change_type: "modified"
+      description: "Preserves the launch class while starting the localhost-only HTTP server."
+    - file: "src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java"
+      change_type: "modified"
+      description: "Replaces mutable file/password state with request-supplied operation arguments."
+    - file: "src/main/java/com/mycompany/pdf4um/model/FileOperazioni.java"
+      change_type: "modified"
+      description: "Uses explicit destination paths for file copies and UTF-8 output."
+    - file: "src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java"
+      change_type: "modified"
+      description: "Returns renamed copies and random-mode CSV in the caller's workspace."
+    - file: "src/main/java/com/mycompany/pdf4um/model/PdfTools.java"
+      change_type: "modified"
+      description: "Closes encrypted input documents deterministically and avoids eager blank-document allocation."
+    - file: "src/main/java/com/mycompany/pdf4um/web/MultipartFormData.java"
+      change_type: "created"
+      description: "Parses bounded multipart requests and preserves file bytes."
+    - file: "src/main/java/com/mycompany/pdf4um/web/Pdf4UmWebServer.java"
+      change_type: "created"
+      description: "Implements loopback binding, same-origin routes, temporary workspaces, and downloads."
+    - file: "src/test/java/com/mycompany/pdf4um/web/Pdf4UmWebServerTest.java"
+      change_type: "created"
+      description: "Exercises all PDF endpoints and representative validation statuses over HTTP."
+upstream_artifacts_consumed:
+  t4:
+    - artifact: ".github/modernize/rearchitecture/artifacts/wire_contracts.yaml"
+      used_for: "HTTP paths, multipart field names, success response types, and error status contracts."
+    - artifact: ".github/modernize/rearchitecture/artifacts/migration_boundary.yaml"
+      used_for: "Loopback-only bind, stable Main FQCN, workspace isolation, and unchanged user launch configuration."
+    - artifact: ".github/modernize/rearchitecture/artifacts/units/pdf-workbench/behavior.yaml"
+      used_for: "Existing operation semantics, output names, validations, and permission mapping."
+    - artifact: ".github/modernize/rearchitecture/artifacts/t3-devops.md"
+      used_for: "Java/Maven environment and documented runtime command."
+    - artifact: ".github/modernize/rearchitecture/learnings/architect/localhost-pdf-web-boundary.md"
+      used_for: "Request-scoped state and safe upload/output handling."
+evidence_mapping:
+  t4:
+    - upstream: ".github/modernize/rearchitecture/artifacts/wire_contracts.yaml#POST /api/split, /api/merge, /api/rename, /api/encrypt, /api/extract-text"
+      output: "src/main/java/com/mycompany/pdf4um/web/Pdf4UmWebServer.java"
+      evidence: "Pdf4UmWebServerTest#bindsToLoopbackAndSupportsAllPdfWorkflows"
+    - upstream: ".github/modernize/rearchitecture/artifacts/units/pdf-workbench/behavior.yaml#branches and side_effects"
+      output: "src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java"
+      evidence: "HTTP tests assert split output names, ordered merge pages, rename names/CSV, encryption, and extracted text."
+    - upstream: ".github/modernize/rearchitecture/artifacts/migration_boundary.yaml#implementation_rule"
+      output: "src/main/java/com/mycompany/pdf4um/web/Pdf4UmWebServer.java and src/main/java/com/mycompany/pdf4um/model/FileOperazioni.java"
+      evidence: "Per-request temporary workspace and explicit destination operations; runtime listener asserted loopback."
+source_references:
+  t4:
+    source_files:
+      - file: "src/main/java/com/mycompany/pdf4um/Main.java"
+        methods_read: ["main", "mniSplitActionPerformed", "mniMergeActionPerformed", "mniRenameActionPerformed", "mniCriptActionPerformed", "mniTextActionPerformed"]
+      - file: "src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java"
+        methods_read: ["split", "merge", "rename", "encrypt", "extractText", "requireExactlyOneFile", "requireFiles"]
+      - file: "src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java"
+        methods_read: ["split", "merge", "rename", "encrypt", "extractText"]
+      - file: "src/main/java/com/mycompany/pdf4um/model/PdfTools.java"
+        methods_read: ["split", "merge", "criptPDF", "strip"]
+      - file: "src/main/java/com/mycompany/pdf4um/model/FileOperazioni.java"
+        methods_read: ["rinominaFileCasuale", "rinominaFile", "scrittura", "scritturaS"]
+      - file: "src/main/java/com/mycompany/pdf4um/model/Critografia.java"
+        methods_read: ["generaCasuali"]
+    branches_preserved: 11
+    validations_preserved: 7
+    error_paths_preserved: 4
+    side_effects_preserved: 5
+    notes: "Workspace outputs replace sibling/CWD mutations; random CSV rows and attachment naming remain compatible."
+traceability:
+  - requirement: "Preserve the existing PDF operations behind a localhost-only browser/API boundary."
+    plan_item: ".github/modernize/rearchitecture/artifacts/wire_contracts.yaml"
+    task: "t4"
+    files:
+      - "src/main/java/com/mycompany/pdf4um/web/Pdf4UmWebServer.java"
+      - "src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java"
+      - "src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java"
+      - "src/main/java/com/mycompany/pdf4um/model/FileOperazioni.java"
+      - "src/main/java/com/mycompany/pdf4um/model/PdfTools.java"
+      - "src/main/java/com/mycompany/pdf4um/Main.java"
+    source_files:
+      - "src/main/java/com/mycompany/pdf4um/Main.java"
+      - "src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java"
+      - "src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java"
+      - "src/main/java/com/mycompany/pdf4um/model/PdfTools.java"
+      - "src/main/java/com/mycompany/pdf4um/model/FileOperazioni.java"
+    status: "completed"
+protocol_violation: false
+errors: []
+warnings:
+  - severity: INFO
+    message: "GET / returned 503 during packaged-JAR probe because the frontend-owned src/main/resources/web assets were not yet present; the route serves them after the frontend task supplies them."
+test_results:
+  t4:
+    command: "mvn -B clean test package"
+    passed: 2
+    failed: 0
+    skipped: 0
+    failures: []
+endpoint_probes:
+  - method: POST
+    path: "/api/split"
+    status: 200
+    result: "PASS via HTTP integration test"
+  - method: POST
+    path: "/api/merge"
+    status: 200
+    result: "PASS via HTTP integration test"
+  - method: POST
+    path: "/api/rename"
+    status: 200
+    result: "PASS via HTTP integration test (sequential and random modes)"
+  - method: POST
+    path: "/api/encrypt"
+    status: 200
+    result: "PASS via HTTP integration test"
+  - method: POST
+    path: "/api/extract-text"
+    status: 200
+    result: "PASS via HTTP integration test"

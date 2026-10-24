@@ -1,17 +1,17 @@
 {
   "schema": "clarification-questions/v1",
-  "generated_at": "2026-10-22T16:43:00Z",
-  "user_input": "Transform the project at /home/france/gitHub/pdf4Um into an appropriate MVC architecture, preserving existing behavior. Inspect the project and execute the refactor; validate with relevant tests/build where feasible. Ask a focused clarification only if the intended MVC scope cannot safely be inferred.",
-  "title": "Java Project MVC Refactor",
+  "generated_at": "2026-10-24T16:37:00Z",
+  "user_input": "Convert the existing Java Swing PDF application into a localhost-only web application while preserving its existing user-visible PDF functionality. User explicitly chose: web app on localhost only for now (not LAN/online). Keep the Java/PDFBox domain logic where practical; replace the Swing UI with a browser-based UI and configure launch/run instructions consistently. Inspect current repository carefully first, preserve existing worktree changes (notably .vscode/launch.json contains a recent Java launch config), and do not revert unrelated files. Work end-to-end, implement the smallest complete functional web boundary, update directly related documentation, run focused build/tests, and report exact changed files, features preserved/limitations, validation results, and any blocker. Do not commit. User wants implementation, not just advice.",
+  "title": "Swing PDF App to Local Web UI",
   "assessment_snapshot": {
-    "intro": "Recon identifies a small Java Maven project with a possible desktop UI, but the precise MVC boundary cannot be established without source analysis:",
+    "intro": "The repository is a small, single-module Java Maven application with a Swing UI and PDFBox domain logic. The requested outcome replaces its user interface with a localhost-only browser experience while preserving current PDF workflows.",
     "bullets": [
-      "Approximately 1,309 LOC in one source module under src/main/java/com/mycompany/pdf4um, with image resources under com/mycompany/img",
-      "Desktop GUI presence is plausible from Main.java and bundled UI icon assets, but remains unconfirmed",
-      "No target Java or framework version is specified; the request calls for an MVC refactor in the existing workspace"
+      "About 1.3K nonblank Java source lines in one Maven module",
+      "The project has an existing .vscode/launch.json launch configuration that must be preserved",
+      "User explicitly requires loopback-only access, behavior preservation, matching run instructions, and no commit"
     ]
   },
-  "proposed_outcome": "Clarify the intended MVC scope and any framework or UI constraints, then refactor the existing Java application in place while preserving observable behavior and validating with relevant tests and a build.",
+  "proposed_outcome": "Convert the existing application in place to a minimal Java-hosted browser UI bound exclusively to localhost, retaining the existing PDFBox processing capabilities wherever practical; avoid unrelated worktree changes and document consistent launch/run commands.",
   "scope": [
     "frontend",
     "backend",
@@ -23,31 +23,31 @@
       "id": "F1",
       "kit": "frontend",
       "field": "target.framework",
-      "title": "Target UI framework",
-      "question": "Which UI framework and version should the MVC refactor target? If this is only a structural refactor, should it retain the project's existing Java UI framework and version?",
+      "title": "Browser UI approach",
+      "question": "Which browser UI framework or implementation style should the new interface use?",
       "importance": "required",
       "impact": 5,
-      "recommended": "Keep the existing Java UI framework and version (identify from the project)",
+      "recommended": "Plain HTML/CSS/JavaScript (no frontend framework)",
       "default": null,
       "prefilled": false,
       "prefilled_value": null,
       "answer": {
-        "value": "Java Swing (specify Java version)",
+        "value": "Plain HTML/CSS/JavaScript (no frontend framework)",
         "source": "user"
       },
       "depends_on": null,
       "options": [
         {
-          "value": "Keep the existing Java UI framework and version (identify from the project)",
-          "label": "Keep the existing Java UI framework and version (identify from the project)"
+          "value": "Plain HTML/CSS/JavaScript (no frontend framework)",
+          "label": "Plain HTML, CSS, and JavaScript (no frontend framework)"
         },
         {
-          "value": "Java Swing (specify Java version)",
-          "label": "Java Swing (specify Java version)"
+          "value": "React (choose current compatible version)",
+          "label": "React (version to be selected for compatibility)"
         },
         {
-          "value": "JavaFX (specify Java version)",
-          "label": "JavaFX (specify Java version)"
+          "value": "Other",
+          "label": "Other"
         }
       ],
       "allow_other": true,
@@ -58,30 +58,30 @@
       "kit": "frontend",
       "field": "target.component_library",
       "title": "UI component library",
-      "question": "Should the MVC refactor keep the current UI components, or use a specific Java UI component library?",
+      "question": "Should the browser UI use a component library, or keep to lightweight native browser controls?",
       "importance": "required",
-      "impact": 4,
-      "recommended": "Keep the existing UI components and assets",
+      "impact": 5,
+      "recommended": "No component library; native HTML controls and minimal CSS",
       "default": null,
       "prefilled": false,
       "prefilled_value": null,
       "answer": {
-        "value": "Swing standard components",
+        "value": "No component library; native HTML controls and minimal CSS",
         "source": "user"
       },
       "depends_on": null,
       "options": [
         {
-          "value": "Keep the existing UI components and assets",
-          "label": "Keep the existing UI components and assets"
+          "value": "No component library; native HTML controls and minimal CSS",
+          "label": "No component library; native HTML controls and minimal CSS"
         },
         {
-          "value": "JavaFX standard controls",
-          "label": "JavaFX standard controls"
+          "value": "Choose a component library compatible with the selected framework",
+          "label": "Choose a compatible component library"
         },
         {
-          "value": "Swing standard components",
-          "label": "Swing standard components"
+          "value": "Other",
+          "label": "Other"
         }
       ],
       "allow_other": true,
@@ -92,9 +92,9 @@
       "kit": "frontend",
       "field": "visual.screenshots",
       "title": "Current UI reference",
-      "question": "If the desktop UI is in scope, provide paths to screenshots or a recording of its current behavior and appearance. If no UI changes are intended, say so.",
+      "question": "Do you have screenshots or recordings of the Swing UI to guide visual reproduction? If not, confirm that functionality matters more than pixel-perfect appearance.",
       "importance": "required",
-      "impact": 4,
+      "impact": 5,
       "recommended": null,
       "default": null,
       "prefilled": false,
@@ -112,26 +112,30 @@
       "kit": "frontend",
       "field": "visual.design_system",
       "title": "Visual design guidance",
-      "question": "What visual guidance should the refactor follow? For example, preserve the existing appearance and assets, or provide a design system/reference.",
+      "question": "What visual design system or token source should guide the browser UI? For example, use simple native controls without pixel matching, or provide a brand/design reference.",
       "importance": "required",
       "impact": 4,
-      "recommended": "Preserve the existing UI appearance and assets",
-      "default": "match existing pixel-by-pixel using extracted CSS custom properties",
+      "recommended": "No custom design system; prioritize functional parity with a simple accessible native-browser UI",
+      "default": null,
       "prefilled": false,
       "prefilled_value": null,
       "answer": {
-        "value": "match existing pixel-by-pixel using extracted CSS custom properties",
+        "value": "No custom design system; prioritize functional parity with a simple accessible native-browser UI",
         "source": "user"
       },
       "depends_on": null,
       "options": [
         {
-          "value": "Preserve the existing UI appearance and assets",
-          "label": "Preserve the existing UI appearance and assets"
+          "value": "No custom design system; prioritize functional parity with a simple accessible native-browser UI",
+          "label": "No custom design system; simple accessible UI, functionality over pixel matching"
         },
         {
-          "value": "Follow a supplied design system or reference",
-          "label": "Follow a supplied design system or reference"
+          "value": "Match existing UI as closely as possible",
+          "label": "Match existing UI as closely as possible"
+        },
+        {
+          "value": "Other",
+          "label": "Other"
         }
       ],
       "allow_other": true,
@@ -142,9 +146,9 @@
       "kit": "frontend",
       "field": "compliance.accessibility",
       "title": "Accessibility target",
-      "question": "Which accessibility standard should the UI meet, if applicable?",
+      "question": "Which accessibility standard should be targeted?",
       "importance": "recommended",
-      "impact": 2,
+      "impact": 3,
       "recommended": "WCAG 2.1 AA",
       "default": "WCAG 2.1 AA",
       "prefilled": false,
@@ -164,8 +168,8 @@
           "label": "WCAG 2.2 AA"
         },
         {
-          "value": "No additional accessibility target",
-          "label": "No additional accessibility target"
+          "value": "No formal target",
+          "label": "No formal target"
         }
       ],
       "allow_other": true,
@@ -175,47 +179,57 @@
       "id": "F6",
       "kit": "frontend",
       "field": "compatibility.browsers",
-      "title": "Runtime compatibility",
-      "question": "What runtime or platform compatibility targets should be preserved for the UI?",
+      "title": "Browser targets",
+      "question": "Which browser targets should be supported?",
       "importance": "recommended",
-      "impact": 2,
-      "recommended": null,
-      "default": "preserve current runtime compatibility",
+      "impact": 3,
+      "recommended": "Modern evergreen browsers",
+      "default": "modern evergreen (Chrome, Firefox, Safari, Edge — latest 2 major versions)",
       "prefilled": false,
       "prefilled_value": null,
       "answer": {
-        "value": "preserve current runtime compatibility",
-        "source": "default"
-      },
-      "depends_on": null,
-      "type": "text",
-      "options": []
-    },
-    {
-      "id": "F7",
-      "kit": "frontend",
-      "field": "responsive.breakpoints",
-      "title": "UI layout strategy",
-      "question": "Should the refactor preserve the current desktop layout, or is responsive/adaptive behavior also required?",
-      "importance": "recommended",
-      "impact": 2,
-      "recommended": "Preserve current layout and behavior",
-      "default": "preserve current layout and behavior",
-      "prefilled": false,
-      "prefilled_value": null,
-      "answer": {
-        "value": "preserve current layout and behavior",
+        "value": "modern evergreen (Chrome, Firefox, Safari, Edge — latest 2 major versions)",
         "source": "user"
       },
       "depends_on": null,
       "options": [
         {
-          "value": "Preserve current layout and behavior",
-          "label": "Preserve current layout and behavior"
+          "value": "Modern evergreen browsers",
+          "label": "Modern evergreen browsers"
         },
         {
-          "value": "Add responsive/adaptive behavior",
-          "label": "Add responsive/adaptive behavior"
+          "value": "A specific browser/version list",
+          "label": "A specific browser/version list"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "F7",
+      "kit": "frontend",
+      "field": "responsive.breakpoints",
+      "title": "Responsive layout",
+      "question": "What responsive layout strategy should the web UI use?",
+      "importance": "recommended",
+      "impact": 3,
+      "recommended": "Mobile-first responsive layout",
+      "default": "mobile-first using existing breakpoints detected from codebase",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "mobile-first using existing breakpoints detected from codebase",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "Mobile-first responsive layout",
+          "label": "Mobile-first responsive layout"
+        },
+        {
+          "value": "Desktop-only/local workstation layout",
+          "label": "Desktop-focused layout for local workstation use"
         }
       ],
       "allow_other": true,
@@ -226,90 +240,124 @@
       "kit": "frontend",
       "field": "i18n.locales",
       "title": "Supported languages",
-      "question": "Which languages/locales should remain supported?",
+      "question": "Which interface languages are in scope?",
       "importance": "optional",
-      "impact": 1,
+      "impact": 2,
       "recommended": null,
       "default": "preserve current locales; keep existing i18n library if present",
       "prefilled": false,
       "prefilled_value": null,
       "answer": {
         "value": "preserve current locales; keep existing i18n library if present",
-        "source": "default"
-      },
-      "depends_on": null,
-      "type": "text",
-      "options": []
-    },
-    {
-      "id": "F9",
-      "kit": "frontend",
-      "field": "state_mgmt.preference",
-      "title": "State management",
-      "question": "Do you have a preference for how UI state should be managed?",
-      "importance": "optional",
-      "impact": 1,
-      "recommended": null,
-      "default": "preserve existing pattern if identifiable; otherwise use a minimal approach",
-      "prefilled": false,
-      "prefilled_value": null,
-      "answer": {
-        "value": "preserve existing pattern if identifiable; otherwise use a minimal approach",
-        "source": "default"
-      },
-      "depends_on": null,
-      "type": "text",
-      "options": []
-    },
-    {
-      "id": "F10",
-      "kit": "frontend",
-      "field": "routing.preference",
-      "title": "Navigation strategy",
-      "question": "Should the refactor preserve the existing navigation strategy, or use another approach?",
-      "importance": "optional",
-      "impact": 1,
-      "recommended": null,
-      "default": "preserve existing navigation strategy",
-      "prefilled": false,
-      "prefilled_value": null,
-      "answer": {
-        "value": "preserve existing navigation strategy",
-        "source": "default"
-      },
-      "depends_on": null,
-      "type": "text",
-      "options": []
-    },
-    {
-      "id": "B1",
-      "kit": "backend",
-      "field": "target.framework",
-      "title": "Java framework target",
-      "question": "Which backend/application framework and version should the refactor target? If this is only an MVC separation, should it retain the existing Java framework and version?",
-      "importance": "required",
-      "impact": 5,
-      "recommended": "Keep the existing Java framework and version (identify from the project)",
-      "default": null,
-      "prefilled": false,
-      "prefilled_value": null,
-      "answer": {
-        "value": "Keep the existing Java framework and version (identify from the project)",
         "source": "user"
       },
       "depends_on": null,
       "options": [
         {
-          "value": "Keep the existing Java framework and version (identify from the project)",
-          "label": "Keep the existing Java framework and version (identify from the project)"
+          "value": "Preserve current locales",
+          "label": "Preserve current locales"
         },
         {
-          "value": "Java SE only; no additional framework",
-          "label": "Java SE only; no additional framework"
+          "value": "English only",
+          "label": "English only"
         },
         {
-          "value": "Spring Boot (specify version)",
-          "label": "Spring Boot (specify version)"
+          "value": "Other",
+          "label": "Other"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "F9",
+      "kit": "frontend",
+      "field": "state_mgmt.preference",
+      "title": "Client-side state",
+      "question": "What client-side state approach do you prefer?",
+      "importance": "optional",
+      "impact": 2,
+      "recommended": "Minimal native browser state; no state library",
+      "default": "preserve existing pattern if identifiable; otherwise recommend minimal (component state + server-state library)",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "preserve existing pattern if identifiable; otherwise recommend minimal (component state + server-state library)",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "Minimal native browser state; no state library",
+          "label": "Minimal native browser state; no state library"
+        },
+        {
+          "value": "Select a state library",
+          "label": "Select a state library"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "F10",
+      "kit": "frontend",
+      "field": "routing.preference",
+      "title": "Browser navigation",
+      "question": "What browser routing strategy should be used?",
+      "importance": "optional",
+      "impact": 2,
+      "recommended": "Simple server-rendered or single-page form flow; no routing library",
+      "default": "use the de-facto router for the chosen target framework",
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "use the de-facto router for the chosen target framework",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "Simple server-rendered or single-page form flow; no routing library",
+          "label": "Simple pages/forms; no routing library"
+        },
+        {
+          "value": "Use framework's standard router",
+          "label": "Use framework's standard router"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
+    },
+    {
+      "id": "B1",
+      "kit": "backend",
+      "field": "target.framework",
+      "title": "Java web server approach",
+      "question": "What Java server framework or approach should expose the PDF functionality to the browser?",
+      "importance": "required",
+      "impact": 5,
+      "recommended": "JDK built-in HttpServer (no added web framework)",
+      "default": null,
+      "prefilled": false,
+      "prefilled_value": null,
+      "answer": {
+        "value": "Spring Boot (choose a compatible version)",
+        "source": "user"
+      },
+      "depends_on": null,
+      "options": [
+        {
+          "value": "JDK built-in HttpServer (no added web framework)",
+          "label": "JDK built-in HttpServer (no added web framework)"
+        },
+        {
+          "value": "Spring Boot (choose a compatible version)",
+          "label": "Spring Boot (version to be selected)"
+        },
+        {
+          "value": "Other",
+          "label": "Other"
         }
       ],
       "allow_other": true,
@@ -319,10 +367,10 @@
       "id": "B2",
       "kit": "backend",
       "field": "api.contract_preservation",
-      "title": "API compatibility",
-      "question": "If the application exposes APIs or service contracts, what compatibility policy should the refactor follow?",
+      "title": "Existing contracts",
+      "question": "How should the new web boundary handle existing external APIs or contracts?",
       "importance": "required",
-      "impact": 5,
+      "impact": 4,
       "recommended": "must preserve",
       "default": "must preserve",
       "prefilled": true,
@@ -335,19 +383,15 @@
       "options": [
         {
           "value": "must preserve",
-          "label": "Must preserve all existing contracts"
+          "label": "Must preserve existing contracts"
         },
         {
           "value": "can break with versioning",
-          "label": "Breaking changes allowed only with versioning"
+          "label": "Breaking changes allowed with versioning"
         },
         {
           "value": "can break",
-          "label": "Breaking changes allowed"
-        },
-        {
-          "value": "Not applicable; no external API/service contracts",
-          "label": "Not applicable; no external API/service contracts"
+          "label": "No external API compatibility requirement"
         }
       ],
       "allow_other": true,
@@ -357,39 +401,31 @@
       "id": "B3",
       "kit": "backend",
       "field": "data.migration_strategy",
-      "title": "Data migration approach",
-      "question": "If the application has persistent data, should the refactor change its schema or storage, or leave data migration out of scope?",
+      "title": "Data migration",
+      "question": "What database/data migration approach should be used?",
       "importance": "required",
-      "impact": 4,
-      "recommended": "no migration",
+      "impact": 3,
+      "recommended": "TBD / assess in research phase",
       "default": "TBD / assess in research phase",
       "prefilled": false,
       "prefilled_value": null,
       "answer": {
-        "value": "no migration",
+        "value": "TBD / assess in research phase",
         "source": "user"
       },
       "depends_on": null,
       "options": [
         {
           "value": "no migration",
-          "label": "No migration; leave data storage/schema untouched"
-        },
-        {
-          "value": "in-place",
-          "label": "In-place schema changes"
-        },
-        {
-          "value": "dual-write",
-          "label": "Dual-write during transition"
-        },
-        {
-          "value": "new schema",
-          "label": "New schema with data migration"
+          "label": "No database migration; retain current local PDF workflow/state"
         },
         {
           "value": "TBD / assess in research phase",
-          "label": "Assess after examining the project"
+          "label": "Assess the existing data/storage behavior before deciding"
+        },
+        {
+          "value": "Other",
+          "label": "Other"
         }
       ],
       "allow_other": true,
@@ -399,56 +435,76 @@
       "id": "B4",
       "kit": "backend",
       "field": "auth.framework",
-      "title": "Authentication policy",
-      "question": "If authentication or authorization exists, should the refactor preserve the current mechanism?",
+      "title": "Authentication",
+      "question": "What authentication policy should apply to the localhost-only application?",
       "importance": "recommended",
-      "impact": 2,
-      "recommended": null,
+      "impact": 3,
+      "recommended": "Preserve existing auth if present; otherwise no new auth for loopback-only use",
       "default": "preserve existing auth mechanism; detect from codebase",
       "prefilled": false,
       "prefilled_value": null,
       "answer": {
         "value": "preserve existing auth mechanism; detect from codebase",
-        "source": "default"
+        "source": "user"
       },
       "depends_on": null,
-      "type": "text",
-      "options": []
+      "options": [
+        {
+          "value": "Preserve existing auth if present; otherwise no new auth for loopback-only use",
+          "label": "Preserve existing auth if present; otherwise no new auth for loopback-only use"
+        },
+        {
+          "value": "Add local authentication",
+          "label": "Add local authentication"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
     },
     {
       "id": "B5",
       "kit": "backend",
       "field": "nfr.sla",
-      "title": "Performance expectations",
-      "question": "Are there performance or availability targets the refactor must maintain?",
+      "title": "Performance targets",
+      "question": "What performance target should the local application meet?",
       "importance": "recommended",
       "impact": 2,
-      "recommended": null,
+      "recommended": "Match current local workflow performance; no regression",
       "default": "match current production baseline; no regression",
       "prefilled": false,
       "prefilled_value": null,
       "answer": {
         "value": "match current production baseline; no regression",
-        "source": "default"
+        "source": "user"
       },
       "depends_on": null,
-      "type": "text",
-      "options": []
+      "options": [
+        {
+          "value": "Match current local workflow performance; no regression",
+          "label": "Match current local workflow performance; no regression"
+        },
+        {
+          "value": "No specific target",
+          "label": "No specific target"
+        }
+      ],
+      "allow_other": true,
+      "type": "single_select"
     },
     {
       "id": "G1",
       "kit": "generic",
       "field": "success.definition",
-      "title": "Definition of success",
-      "question": "What should count as a successful MVC refactor?",
+      "title": "Definition of done",
+      "question": "What observable outcomes define success?",
       "importance": "required",
       "impact": 5,
       "recommended": null,
       "default": "feature parity with the current system; all existing user-facing behaviors preserved",
       "prefilled": true,
-      "prefilled_value": "Preserve existing behavior while refactoring the project into an appropriate MVC architecture",
+      "prefilled_value": "Preserve existing user-visible PDF functionality in a browser UI served only on localhost; keep Java/PDFBox logic where practical; document consistent launch/run instructions; run focused build/tests; report changes and limitations; do not commit.",
       "answer": {
-        "value": "Preserve existing behavior while refactoring the project into an appropriate MVC architecture",
+        "value": "Preserve existing user-visible PDF functionality in a browser UI served only on localhost; keep Java/PDFBox logic where practical; document consistent launch/run instructions; run focused build/tests; report changes and limitations; do not commit.",
         "source": "user"
       },
       "depends_on": null,
@@ -459,17 +515,17 @@
       "id": "G2",
       "kit": "generic",
       "field": "out_of_scope",
-      "title": "Out-of-scope boundaries",
-      "question": "Are there files, components, or behaviors that must not be changed?",
+      "title": "Out of scope",
+      "question": "Are any areas explicitly out of scope?",
       "importance": "recommended",
       "impact": 2,
       "recommended": null,
-      "default": "no explicit exclusions; infer from project structure",
-      "prefilled": false,
-      "prefilled_value": null,
+      "default": "no explicit exclusions; agent infers from project structure",
+      "prefilled": true,
+      "prefilled_value": "Do not revert or alter unrelated worktree changes, especially .vscode/launch.json; do not expose the service on the LAN or online; do not commit.",
       "answer": {
-        "value": "no explicit exclusions; infer from project structure",
-        "source": "default"
+        "value": "Do not revert or alter unrelated worktree changes, especially .vscode/launch.json; do not expose the service on the LAN or online; do not commit.",
+        "source": "user"
       },
       "depends_on": null,
       "type": "text",
@@ -479,14 +535,14 @@
       "id": "G3",
       "kit": "generic",
       "field": "existing_tests.posture",
-      "title": "Existing test policy",
-      "question": "How should existing tests be treated during the refactor?",
+      "title": "Existing tests",
+      "question": "What is the required policy for existing tests?",
       "importance": "recommended",
-      "impact": 3,
+      "impact": 2,
       "recommended": "must pass",
       "default": "must pass",
-      "prefilled": false,
-      "prefilled_value": null,
+      "prefilled": true,
+      "prefilled_value": "must pass",
       "answer": {
         "value": "must pass",
         "source": "user"
@@ -495,19 +551,15 @@
       "options": [
         {
           "value": "must pass",
-          "label": "Must pass; preserve existing tests"
+          "label": "All existing tests must pass"
         },
         {
           "value": "can rewrite",
-          "label": "May replace with equivalent coverage"
+          "label": "Tests may be replaced with equivalent coverage"
         },
         {
           "value": "ignore",
-          "label": "Ignore outdated tests and write new tests"
-        },
-        {
-          "value": "partial: specify suites",
-          "label": "Require only specified suites"
+          "label": "Ignore existing tests and write new tests"
         }
       ],
       "allow_other": true,
@@ -517,12 +569,12 @@
       "id": "G4",
       "kit": "generic",
       "field": "target.output_location",
-      "title": "Refactor location",
-      "question": "Where should the refactored code be placed?",
+      "title": "Rewrite location",
+      "question": "Should this conversion update the existing project in place or use a new directory?",
       "importance": "required",
       "impact": 4,
       "recommended": "in-place",
-      "default": "new sibling directory: pdf4Um-new",
+      "default": null,
       "prefilled": true,
       "prefilled_value": "in-place",
       "answer": {
@@ -532,12 +584,12 @@
       "depends_on": null,
       "options": [
         {
-          "value": "pdf4Um-new",
-          "label": "New sibling directory: pdf4Um-new"
+          "value": "in-place",
+          "label": "In place in the existing repository"
         },
         {
-          "value": "in-place",
-          "label": "In the existing workspace (in-place)"
+          "value": "pdf4Um-new",
+          "label": "A new sibling directory named pdf4Um-new"
         }
       ],
       "allow_other": true,
@@ -548,15 +600,15 @@
       "kit": "generic",
       "field": "constraints.additional",
       "title": "Additional constraints",
-      "question": "Any additional requirements, exclusions, dependencies, compliance rules, or operational constraints?",
+      "question": "Are there any additional constraints, requirements, exclusions, dependencies, or operational rules?",
       "importance": "optional",
-      "impact": 2,
+      "impact": 3,
       "recommended": null,
       "default": "None beyond the decisions listed in this specification.",
       "prefilled": true,
-      "prefilled_value": "None beyond the decisions listed in this specification.",
+      "prefilled_value": "Localhost-only (not LAN/online); preserve the recent .vscode/launch.json and all unrelated worktree changes; do not commit.",
       "answer": {
-        "value": "None beyond the decisions listed in this specification.",
+        "value": "Localhost-only (not LAN/online); preserve the recent .vscode/launch.json and all unrelated worktree changes; do not commit.",
         "source": "user"
       },
       "depends_on": null,

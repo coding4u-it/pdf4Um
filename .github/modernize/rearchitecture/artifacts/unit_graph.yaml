@@ -1,0 +1,17 @@
+units:
+  - name: pdf-workbench
+    trigger: page
+    trigger_detail: "Current Swing main window; target browser page at GET / and same-origin PDF actions under /api."
+    source_anchors:
+      - path: src/main/java/com/mycompany/pdf4um/Main.java
+        line: 806
+      - path: src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java
+        line: 28
+      - path: src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java
+        line: 11
+      - path: src/main/java/com/mycompany/pdf4um/model/PdfTools.java
+        line: 103
+    exported_signature: []
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs: []

@@ -1,0 +1,62 @@
+user_intent:
+  raw_request: "Convert the existing Swing PDF application into a localhost-only browser application, preserve existing user-visible PDF functionality, keep Java/PDFBox where practical, and preserve unrelated worktree changes."
+  inferred_acceptance:
+    - "A browser UI runs from the existing Java application entrypoint."
+    - "The web listener is accessible only on 127.0.0.1."
+    - "The existing split, merge, rename, encrypt, and text extraction workflows remain available."
+    - "PDF transformations continue using the existing Java/PDFBox domain code where practical."
+    - "The existing VS Code launch configuration is not reverted or overwritten."
+  cleanup_required: false
+strategy: minimal_runtime
+runtime_reachable:
+  - src/main/java/com/mycompany/pdf4um/Main.java
+  - src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java
+  - src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java
+  - src/main/java/com/mycompany/pdf4um/model/PdfTools.java
+  - src/main/java/com/mycompany/pdf4um/model/FileOperazioni.java
+  - src/main/java/com/mycompany/pdf4um/model/Critografia.java
+  - src/main/resources/web/index.html
+  - src/main/resources/web/app.js
+  - src/main/resources/web/styles.css
+must_rewrite:
+  - path: src/main/java/com/mycompany/pdf4um/Main.java
+    reason: "Replace Swing frame startup with the loopback web-server entrypoint while retaining the current main-class FQCN."
+  - path: src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java
+    reason: "Remove mutable selected-file/password state or make it request-scoped; web requests must supply independent inputs."
+  - path: src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java
+    reason: "Route generated outputs and random-mode CSV into a temporary operation workspace instead of mutating uploaded originals or writing in process CWD."
+  - path: src/main/java/com/mycompany/pdf4um/model/FileOperazioni.java
+    reason: "Provide explicit destination paths / workspace behavior for rename results and CSV output."
+  - path: src/main/java/com/mycompany/pdf4um/web/Pdf4UmWebServer.java
+    reason: "Add the same-origin HTTP server, explicit 127.0.0.1 binding, static UI serving, operation routes, and lifecycle."
+  - path: src/main/java/com/mycompany/pdf4um/web/MultipartFormData.java
+    reason: "Parse bounded multipart uploads safely; browser-selected files must not become server filesystem paths."
+  - path: src/main/resources/web/index.html
+    reason: "Provide the browser workbench replacing the Swing controls."
+  - path: src/main/resources/web/app.js
+    reason: "Connect browser file selection, operation forms, progress/result messaging, and downloads to the API."
+  - path: src/main/resources/web/styles.css
+    reason: "Style the browser workbench."
+copy_as_is:
+  - path: src/main/java/com/mycompany/pdf4um/model/PdfTools.java
+    reason: "Its PDFBox split, merge, encryption, and text-strip implementations supply the existing domain transformations; instantiate it per request or serialize access because it has mutable fields."
+  - path: src/main/java/com/mycompany/pdf4um/model/Critografia.java
+    reason: "Random suffix generation can remain as-is when called only within a request-scoped operation."
+  - path: pom.xml
+    reason: "Keep Java 11 compatibility and PDFBox 2.0.26 unless an evidenced build need requires a narrowly scoped edit."
+  - path: .vscode/launch.json
+    reason: "Existing user worktree configuration; preserve it and keep Main's launch FQCN valid."
+  - path: nbactions.xml
+    reason: "Existing run actions name the same main-class FQCN; keep working by retaining that entrypoint."
+legacy_allowed_to_remain:
+  - src/main/java/com/mycompany/pdf4um/Main.form
+  - src/main/java/com/mycompany/img/
+defer_cleanup:
+  - "Main.form and unused Swing image resources may remain as unreachable legacy assets; deleting them is not required to satisfy localhost runtime acceptance."
+full_rewrite_reason: null
+implementation_rule: >
+  Implementation scope is must_rewrite plus any narrowly necessary copy_as_is adaptation.
+  Do not infer rewrite scope from source_anchors. Do not change user-owned launch configuration.
+  Each upload and its outputs stay within an isolated temporary workspace, which is removed
+  after the response. Do not accept server-side paths, write output to the process working
+  directory, or modify the user's source files.

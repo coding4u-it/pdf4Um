@@ -1,0 +1,74 @@
+batch_id: "t5.1"
+completed_tasks: ["t5.1"]
+blocked_tasks: []
+files_changed:
+  t5.1:
+    - file: "src/main/resources/web/app.js"
+      change_type: "modified"
+      description: "Reads API error JSON correctly, fixes shared/deferred focus handling, and retains focus after file removal."
+    - file: "src/main/resources/web/index.html"
+      change_type: "modified"
+      description: "Adds a result-icon target for state-specific feedback."
+    - file: "src/main/resources/web/styles.css"
+      change_type: "modified"
+      description: "Styles working, success, and error states distinctly."
+upstream_artifacts_consumed:
+  t5.1:
+    - artifact: ".github/modernize/rearchitecture/artifacts/t4-backend.md"
+      used_for: "Backend route and JSON error response contract."
+    - artifact: ".github/modernize/rearchitecture/artifacts/t5-frontend.md"
+      used_for: "Existing client workflows and selection behavior to preserve."
+    - artifact: ".github/modernize/rearchitecture/artifacts/t7-architect.md"
+      used_for: "The error JSON property mismatch finding."
+    - artifact: ".github/modernize/rearchitecture/artifacts/t8-ux.md"
+      used_for: "Error feedback, keyboard focus, and result-state remediation acceptance criteria."
+    - artifact: ".github/modernize/rearchitecture/artifacts/board.md"
+      used_for: "User's localhost-only scope and worktree preservation constraint."
+    - artifact: ".github/modernize/rearchitecture/learnings/frontend/local-pdf-workbench-ui.md"
+      used_for: "Existing native-control and frontend/API conventions."
+    - artifact: ".github/modernize/rearchitecture/learnings/ux/localhost-pdf-workbench.md"
+      used_for: "Keyboard-operable ordered-file-list interaction guidance."
+evidence_mapping:
+  t5.1:
+    - upstream: ".github/modernize/rearchitecture/artifacts/t7-architect.md#Error JSON property mismatch"
+      output: "src/main/resources/web/app.js#handleFailure"
+      evidence: "Chrome displayed the exact error detail supplied in a generic 400 JSON error response."
+    - upstream: ".github/modernize/rearchitecture/artifacts/t8-ux.md#UX-1"
+      output: "src/main/resources/web/app.js#focusWhenReady"
+      evidence: "Chrome confirmed the picker regained focus after the failed request and the selected file remained."
+    - upstream: ".github/modernize/rearchitecture/artifacts/t8-ux.md#UX-2"
+      output: "src/main/resources/web/app.js#makeRemoveAction"
+      evidence: "Chrome confirmed adjacent-item focus and picker focus when the selection becomes empty."
+    - upstream: ".github/modernize/rearchitecture/artifacts/t8-ux.md#UX-3"
+      output: "src/main/resources/web/app.js#setResultState, src/main/resources/web/index.html#result-icon, src/main/resources/web/styles.css"
+      evidence: "Chrome confirmed the error-state icon and red styling."
+traceability:
+  - requirement: "UX-1: Generic API 400 feedback"
+    plan_item: ".github/modernize/rearchitecture/artifacts/t8-ux.md#UX-1"
+    task: "t5.1"
+    files: ["src/main/resources/web/app.js"]
+    status: "completed"
+  - requirement: "UX-2: Keyboard focus after file removal"
+    plan_item: ".github/modernize/rearchitecture/artifacts/t8-ux.md#UX-2"
+    task: "t5.1"
+    files: ["src/main/resources/web/app.js"]
+    status: "completed"
+  - requirement: "UX-3: Result icon and visual state match outcome"
+    plan_item: ".github/modernize/rearchitecture/artifacts/t8-ux.md#UX-3"
+    task: "t5.1"
+    files:
+      - "src/main/resources/web/app.js"
+      - "src/main/resources/web/index.html"
+      - "src/main/resources/web/styles.css"
+    status: "completed"
+protocol_violation: false
+errors: []
+warnings:
+  - "Node.js is unavailable, so node --check could not run; the updated JavaScript executed successfully in headless Chrome."
+test_results:
+  t5.1:
+    command: "mvn -B test package; headless Chrome 156 CDP regression checks; curl static-resource probes"
+    passed: 5
+    failed: 0
+    skipped: 0
+    failures: []

@@ -1,0 +1,97 @@
+contracts:
+  - name: "PDF workbench page"
+    unit: pdf-workbench
+    type: rest
+    stability: must_preserve
+    source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:806-822"
+    contract:
+      method: "GET"
+      path: "/"
+      request: "No body."
+      response: "200 text/html; charset=utf-8 with the bundled browser workbench."
+      error: "404 for unknown paths."
+      auth: "Loopback-only listener; no LAN exposure."
+    target_contract:
+      method: "GET /"
+      notes: "Serve static resources from the same Java process and same origin as the API."
+    semantic_divergence: []
+  - name: "Split PDF"
+    unit: pdf-workbench
+    type: rest
+    stability: must_preserve
+    source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:717-725; src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java:28-42"
+    contract:
+      method: "POST"
+      path: "/api/split"
+      request: "multipart/form-data: one file field `file`; optional `pagesPerPart` integer (omitted or 1 means split every page)."
+      response: "200 application/zip containing PDFs named from the uploaded stem plus numbered suffixes, preserving the existing _0001.pdf naming convention."
+      error: "400 for missing/multiple files or invalid/non-positive pagesPerPart; 415 for non-PDF upload; 422 for unreadable PDF; 500 for unexpected I/O."
+      auth: "Loopback-only; same-origin browser request."
+    target_contract:
+      method: "POST /api/split"
+      notes: "Use PDFBox Splitter and isolate generated PDFs in the request workspace; return a ZIP attachment."
+    semantic_divergence: []
+  - name: "Merge PDFs"
+    unit: pdf-workbench
+    type: rest
+    stability: must_preserve
+    source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:728-737; src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java:44-48"
+    contract:
+      method: "POST"
+      path: "/api/merge"
+      request: "multipart/form-data with at least two repeated `files` PDF fields; merge order is browser selection order."
+      response: "200 application/pdf attachment named from the first uploaded stem plus _merged.pdf."
+      error: "400 for fewer than two files; 415 for non-PDF uploads; 422 for unreadable input; 500 for unexpected I/O."
+      auth: "Loopback-only; same-origin browser request."
+    target_contract:
+      method: "POST /api/merge"
+      notes: "Pass uploads to PDFMergerUtility in submitted order; do not accept server-side path parameters."
+    semantic_divergence: []
+  - name: "Rename PDFs"
+    unit: pdf-workbench
+    type: rest
+    stability: must_preserve
+    source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:739-748; src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java:19-34"
+    contract:
+      method: "POST"
+      path: "/api/rename"
+      request: "multipart/form-data with one or more repeated `files` PDF fields; `mode=sequential|random`; sequential accepts `prefix` and `startingNumber` (0-9); random accepts `codeLength` (4-20) and `useSymbols` boolean."
+      response: "200 application/zip containing renamed PDF copies; random mode also includes `esporta.csv` with the legacy `.pdf;code` rows."
+      error: "400 for no files or invalid parameters; 415 for non-PDF uploads; 500 for rename/export failure."
+      auth: "Loopback-only; same-origin browser request."
+    target_contract:
+      method: "POST /api/rename"
+      notes: "Preserve sequential prefix/number and random suffix behavior, but return copies rather than mutating original user files. Put esporta.csv inside the ZIP, never process CWD."
+    semantic_divergence: []
+  - name: "Encrypt PDFs"
+    unit: pdf-workbench
+    type: rest
+    stability: must_preserve
+    source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:750-760; src/main/java/com/mycompany/pdf4um/model/PdfTools.java:152-184"
+    contract:
+      method: "POST"
+      path: "/api/encrypt"
+      request: "multipart/form-data with one or more repeated `files` PDF fields; required `password`; boolean `allowOpen`, `allowPrint`, `allowCopy`, `allowModify`, and `allowAssembly` fields."
+      response: "200 application/zip containing protected copies named from each uploaded stem plus _cript.pdf."
+      error: "400 for no files or missing password; 415 for non-PDF upload; 422 for unreadable/encrypted input; 500 for unexpected I/O."
+      auth: "Loopback-only; same-origin browser request."
+    target_contract:
+      method: "POST /api/encrypt"
+      notes: "Reuse the PDFBox 256-bit StandardProtectionPolicy behavior and existing allow-flag inversion. Require the password from the request; do not persist it between requests."
+    semantic_divergence: []
+  - name: "Extract text"
+    unit: pdf-workbench
+    type: rest
+    stability: must_preserve
+    source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:786-795; src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java:45-49"
+    contract:
+      method: "POST"
+      path: "/api/extract-text"
+      request: "multipart/form-data with one file field `file`."
+      response: "200 text/plain; charset=utf-8 attachment named from the uploaded stem plus _text.txt."
+      error: "400 for missing/multiple files; 415 for non-PDF upload; 422 for unreadable PDF; 500 for unexpected I/O."
+      auth: "Loopback-only; same-origin browser request."
+    target_contract:
+      method: "POST /api/extract-text"
+      notes: "Use PDFTextStripper and return extracted UTF-8 text as a download."
+    semantic_divergence: []

@@ -1,0 +1,15 @@
+unit: pdf-workbench
+bindings:
+  - type: convention
+    name: "Swing application entrypoint and JFrame"
+    source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:1-35,806-822"
+    target: "com.mycompany.pdf4um.Main"
+    must_appear_in_target: false
+    notes: "Replace the Swing frame with the Java web-server startup while retaining this class FQCN for the existing launch configuration."
+  - type: convention
+    name: "Swing menu actions and multi-selection JFileChooser"
+    source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:399-404,466-583,629-795"
+    target: "Browser workbench and same-origin HTTP routes"
+    must_appear_in_target: true
+    notes: "Preserve all five PDF operations and multi-file selection; the browser submits file bytes, not local paths."
+runtime_config: []

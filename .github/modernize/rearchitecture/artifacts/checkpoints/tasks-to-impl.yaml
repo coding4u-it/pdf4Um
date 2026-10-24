@@ -1,0 +1,176 @@
+metadata:
+  generated: "2026-10-24T17:11:57Z"
+  source_tasks: "Direct task assignments t4 — backend; t5 and t5.1 — frontend"
+  last_updated: "2026-10-24T17:26:46Z"
+summary:
+  total_tasks: 3
+  completed_tasks: 3
+  in_progress_tasks: 0
+  pending_tasks: 0
+  completion_percentage: 100.0
+tasks:
+  - task_id: "t4"
+    description: "Implement the Java localhost-only web server and PDF workflow endpoints."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/main/java/com/mycompany/pdf4um/Main.java"
+          changes:
+            - change_type: "modified"
+              description: "Retained launch FQCN starts the server bound to 127.0.0.1."
+        - file: "src/main/java/com/mycompany/pdf4um/web/Pdf4UmWebServer.java"
+          changes:
+            - change_type: "added"
+              description: "Adds static resource routing, five PDF endpoints, and temporary upload workspaces."
+        - file: "src/main/java/com/mycompany/pdf4um/web/MultipartFormData.java"
+          changes:
+            - change_type: "added"
+              description: "Adds bounded multipart/form-data parsing."
+        - file: "src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java"
+          changes:
+            - change_type: "modified"
+              description: "Makes operation inputs explicit and removes shared selected-file/password state."
+        - file: "src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java"
+          changes:
+            - change_type: "modified"
+              description: "Creates renamed copies and CSV in caller-provided temporary output paths."
+        - file: "src/main/java/com/mycompany/pdf4um/model/FileOperazioni.java"
+          changes:
+            - change_type: "modified"
+              description: "Replaces process-working-directory behavior with explicit-path helpers."
+        - file: "src/main/java/com/mycompany/pdf4um/model/PdfTools.java"
+          changes:
+            - change_type: "modified"
+              description: "Retains PDFBox transformations and closes encryption input documents."
+        - file: "src/test/java/com/mycompany/pdf4um/web/Pdf4UmWebServerTest.java"
+          changes:
+            - change_type: "added"
+              description: "Verifies successful workflows and contract validation errors over HTTP."
+        - file: "README.md"
+          changes:
+            - change_type: "modified"
+              description: "Documents localhost launch instructions and upload limits."
+        - file: "pom.xml"
+          changes:
+            - change_type: "modified"
+              description: "Adds test-scoped JUnit dependency."
+    verification:
+      build_passed: true
+      test_results:
+        command: "mvn -B clean test package"
+        passed: 2
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Packaged JAR startup confirmed the listener uses 127.0.0.1. GET / awaits frontend-owned bundled assets."
+    upstream_trace:
+      plan_item: ".github/modernize/rearchitecture/artifacts/wire_contracts.yaml"
+      requirements:
+        - "Preserve PDF workflows over localhost-only HTTP."
+      full_trace: "wire_contracts.yaml → t4 → Pdf4UmWebServer/Pdf4UmController/Pdf4UmModel → HTTP integration tests"
+  - task_id: "t5"
+    description: "Implement the browser UI for existing PDF workflows."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/main/resources/web/index.html"
+          changes:
+            - change_type: "added"
+              description: "Adds the accessible workbench structure and workflow controls."
+        - file: "src/main/resources/web/app.js"
+          changes:
+            - change_type: "added"
+              description: "Wires the five PDF workflows to same-origin multipart endpoints and download responses."
+        - file: "src/main/resources/web/styles.css"
+          changes:
+            - change_type: "added"
+              description: "Adds responsive styling and visible keyboard focus."
+    verification:
+      build_passed: true
+      test_results:
+        command: "mvn -B clean test package"
+        passed: 2
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Headless Chrome verified all five operation controls, validation, merge order, selection management, and 375px reflow; packaged static assets returned HTTP 200."
+    upstream_trace:
+      plan_item: ".github/modernize/rearchitecture/artifacts/t2-ux.md"
+      requirements:
+        - "Provide browser workflows for split, merge, rename, encrypt, and text extraction."
+        - "Use the documented same-origin multipart contracts and accessible validation/feedback."
+      full_trace: "t2 UX workflows + wire_contracts.yaml → t5 → static browser workbench → Chrome interaction checks and passing Maven HTTP integration tests"
+  - task_id: "t5.1"
+    description: "Fix UI error feedback and keyboard-focus review findings."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/main/resources/web/app.js"
+          changes:
+            - change_type: "modified"
+              description: "Reads the server error JSON field, shares deferred focus handling, and preserves focus when removing selected files."
+            - change_type: "modified"
+              description: "Sets result state for processing, success, and error outcomes."
+        - file: "src/main/resources/web/index.html"
+          changes:
+            - change_type: "modified"
+              description: "Adds a result-icon target that can reflect the current result state."
+        - file: "src/main/resources/web/styles.css"
+          changes:
+            - change_type: "modified"
+              description: "Styles neutral, success, error, and processing result states distinctly."
+    verification:
+      build_passed: true
+      test_results:
+        command: "mvn -B test package; headless Chrome CDP regression checks; curl static-resource probes"
+        passed: 5
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Two Maven HTTP tests and three focused Chrome checks passed. Chrome verified server 400 feedback, preserved selection, deferred focus, removal focus, and red error-state icon. Node.js is unavailable; the browser executed the updated JavaScript."
+    upstream_trace:
+      plan_item: ".github/modernize/rearchitecture/artifacts/t8-ux.md"
+      requirements:
+        - "UX-1: generic server-side 400 responses display useful error feedback without a false network error."
+        - "UX-2: removing a file retains keyboard focus on an adjacent remove action or the picker."
+        - "UX-3: the result icon and styling do not imply success for an error."
+      full_trace: "t7 architect JSON error contract + t8 UX review findings → t5.1 → app.js/index.html/styles.css → passing Maven and headless Chrome checks"
+upstream_artifacts:
+  - ".github/modernize/rearchitecture/artifacts/t1-architect.md"
+  - ".github/modernize/rearchitecture/artifacts/wire_contracts.yaml"
+  - ".github/modernize/rearchitecture/artifacts/migration_boundary.yaml"
+  - ".github/modernize/rearchitecture/artifacts/units/pdf-workbench/behavior.yaml"
+  - ".github/modernize/rearchitecture/artifacts/t3-devops.md"
+  - ".github/modernize/rearchitecture/artifacts/t2-ux.md"
+  - ".github/modernize/rearchitecture/artifacts/t4-backend-implementation.md"
+  - ".github/modernize/rearchitecture/artifacts/t4-backend-batch-report.yaml"
+  - ".github/modernize/rearchitecture/artifacts/t5-frontend.md"
+  - ".github/modernize/rearchitecture/artifacts/t7-architect.md"
+  - ".github/modernize/rearchitecture/artifacts/t8-ux.md"
+evidence_mapping:
+  - upstream: ".github/modernize/rearchitecture/artifacts/wire_contracts.yaml#POST routes"
+    output: "Pdf4UmWebServer.java"
+    evidence: "HTTP tests pass for all five operation endpoints."
+  - upstream: ".github/modernize/rearchitecture/artifacts/t2-ux.md#Operation workflows and controls"
+    output: "src/main/resources/web/index.html and src/main/resources/web/app.js"
+    evidence: "Chrome interaction checks passed for all five operation forms and selected-file ordering."
+  - upstream: ".github/modernize/rearchitecture/artifacts/wire_contracts.yaml#GET /"
+    output: "src/main/resources/web/index.html, src/main/resources/web/app.js, src/main/resources/web/styles.css"
+    evidence: "Packaged JAR served the workbench and both static assets with HTTP 200."
+  - upstream: ".github/modernize/rearchitecture/artifacts/t7-architect.md#Error JSON property mismatch"
+    output: "src/main/resources/web/app.js#handleFailure"
+    evidence: "Chrome returned the exact generic 400 error text, retained the file, focused the picker, and applied the error state."
+  - upstream: ".github/modernize/rearchitecture/artifacts/t8-ux.md#UX-1"
+    output: "src/main/resources/web/app.js#handleFailure and focusWhenReady"
+    evidence: "Headless Chrome showed server validation feedback and picker focus without throwing or displaying a false connection error."
+  - upstream: ".github/modernize/rearchitecture/artifacts/t8-ux.md#UX-2"
+    output: "src/main/resources/web/app.js#makeRemoveAction"
+    evidence: "Headless Chrome confirmed focus moves to the adjacent file remove action and to the picker when the list becomes empty."
+  - upstream: ".github/modernize/rearchitecture/artifacts/t8-ux.md#UX-3"
+    output: "src/main/resources/web/app.js#setResultState, src/main/resources/web/index.html#result-icon, and src/main/resources/web/styles.css"
+    evidence: "Headless Chrome confirmed an error state uses an exclamation icon and red styling."
+validation:
+  passed: true
+  errors: []
+  warnings: []
+  blocking_issues: []

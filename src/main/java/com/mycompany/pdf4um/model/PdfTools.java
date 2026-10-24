@@ -32,7 +32,6 @@ public class PdfTools {
     private final String ESTENSIONE=".pdf";
     
     public PdfTools() {
-        doc=new PDDocument();
     }
       
    /**
@@ -116,7 +115,7 @@ public class PdfTools {
                     if (i == 100) {
                         nome = "_0";
                     }
-                    part.save(sourceFile.getPath().replace(ESTENSIONE, "") + nome + i + ESTENSIONE);
+                    part.save(outputPath(sourceFile, nome + i));
                 }
             } finally {
                 for (PDDocument part : pages) {
@@ -136,7 +135,7 @@ public class PdfTools {
           // instantiatE PDFMergerUtility class
           PDFMergerUtility pdfMerger = new PDFMergerUtility();
           // set destination file path
-          pdfMerger.setDestinationFileName(sourceFile[0].getPath().replace(ESTENSIONE,"")+"_merged"+ESTENSIONE);
+          pdfMerger.setDestinationFileName(outputPath(sourceFile[0], "_merged"));
           // add all source files, to be merged, to pdfMerger
           for(File ff:sourceFile)
             pdfMerger.addSource(ff);
@@ -150,35 +149,32 @@ public class PdfTools {
      * @throws java.io.IOException
     */
     public void criptPDF(File sourceFile, String pass, boolean ...i) throws IOException{
-            //Loading an existing document
-          doc = PDDocument.load(sourceFile);
-          // Define the length of the encryption key.
-          // Possible values are 40, 128 or 256.
-          int keyLength = 256;
-          String admin=pass+pass;
-          //Creating access permission object
-          AccessPermission ap = new AccessPermission();
-          if (!i[0])
-              ap.setReadOnly();
-          ap.setCanPrint(!i[1]);// disable printing, false      
-          ap.setCanExtractContent(!i[2]);//disable copying
-          ap.setCanModify(!i[3]);//disable modifica
-          ap.setCanAssembleDocument(!i[4]);//disable assemblaggio documento
-          
-          //Creating StandardProtectionPolicy object
-          // Owner password (to open the file with all permissions) is pass
-          // User password (to open the file but with restricted permissions, is empty)
-          StandardProtectionPolicy spp = new StandardProtectionPolicy(admin, pass, ap);
-          //Setting the length of the encryption key
-          spp.setEncryptionKeyLength(keyLength);
-          //Setting the access permissions
-          spp.setPermissions(ap);
-          //Protecting the document
-          doc.protect(spp);
-          //Saving the document
-          doc.save(sourceFile.getPath().replace(ESTENSIONE, ""+"_cript"+ESTENSIONE));
-          //Closing the document
-          doc.close();       
+        try (PDDocument document = PDDocument.load(sourceFile)) {
+            // Define the length of the encryption key.
+            int keyLength = 256;
+            String admin = pass + pass;
+            AccessPermission ap = new AccessPermission();
+            if (!i[0]) {
+                ap.setReadOnly();
+            }
+            ap.setCanPrint(!i[1]);
+            ap.setCanExtractContent(!i[2]);
+            ap.setCanModify(!i[3]);
+            ap.setCanAssembleDocument(!i[4]);
+
+            StandardProtectionPolicy policy = new StandardProtectionPolicy(admin, pass, ap);
+            policy.setEncryptionKeyLength(keyLength);
+            policy.setPermissions(ap);
+            document.protect(policy);
+            document.save(outputPath(sourceFile, "_cript"));
+        }
+    }
+
+    private String outputPath(File sourceFile, String suffix) {
+        String name = sourceFile.getName();
+        int extension = name.toLowerCase(java.util.Locale.ROOT).lastIndexOf(ESTENSIONE);
+        String stem = extension < 0 ? name : name.substring(0, extension);
+        return sourceFile.toPath().resolveSibling(stem + suffix + ESTENSIONE).toString();
     }
     
     /**

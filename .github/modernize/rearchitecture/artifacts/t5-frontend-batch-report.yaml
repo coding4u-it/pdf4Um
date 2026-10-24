@@ -1,0 +1,121 @@
+batch_id: "t5"
+completed_tasks:
+  - "t5"
+blocked_tasks: []
+files_changed:
+  t5:
+    - file: "src/main/resources/web/index.html"
+      change_type: "created"
+      description: "Adds the Italian-language workbench, five operation forms, and accessible selection/result regions."
+    - file: "src/main/resources/web/app.js"
+      change_type: "created"
+      description: "Implements ordered browser file selection, validation, API requests, localized feedback, and downloads."
+    - file: "src/main/resources/web/styles.css"
+      change_type: "created"
+      description: "Adds responsive, keyboard-focus-visible styling for desktop and mobile."
+    - file: ".github/modernize/rearchitecture/artifacts/checkpoints/tasks-to-impl.yaml"
+      change_type: "modified"
+      description: "Extends the existing t4 traceability checkpoint with t5 implementation and verification evidence."
+upstream_artifacts_consumed:
+  t5:
+    - artifact: ".github/modernize/rearchitecture/board.md"
+      used_for: "Explicit localhost-only scope, preserving the existing worktree, and launch-config constraint."
+    - artifact: ".github/modernize/rearchitecture/artifacts/t1-architect.md"
+      used_for: "Five PDF workflows, loopback boundary, and browser/API split."
+    - artifact: ".github/modernize/rearchitecture/artifacts/t2-ux.md"
+      used_for: "Italian interface, operation workflows, selection ordering, validation, feedback, and accessibility."
+    - artifact: ".github/modernize/rearchitecture/artifacts/t3-devops.md"
+      used_for: "Java/Maven runtime and available headless Chrome environment."
+    - artifact: ".github/modernize/rearchitecture/artifacts/t4-backend-implementation.md"
+      used_for: "Static asset allowlist, multipart fields, status mapping, and download semantics."
+    - artifact: ".github/modernize/rearchitecture/artifacts/t4-backend-batch-report.yaml"
+      used_for: "Evidence that the five API workflows are covered by HTTP integration tests."
+    - artifact: ".github/modernize/rearchitecture/artifacts/wire_contracts.yaml"
+      used_for: "Exact operation routes, field names, and response download types."
+    - artifact: ".github/modernize/rearchitecture/artifacts/migration_boundary.yaml"
+      used_for: "Required frontend asset locations and the browser upload boundary."
+    - artifact: ".github/modernize/rearchitecture/artifacts/units/pdf-workbench/behavior.yaml"
+      used_for: "Legacy operation defaults, validations, result naming, and preservation requirements."
+    - artifact: ".github/modernize/rearchitecture/learnings/architect/localhost-pdf-web-boundary.md"
+      used_for: "Same-origin loopback UI, uploaded bytes rather than client paths, and bounded temporary processing."
+evidence_mapping:
+  t5:
+    - upstream: ".github/modernize/rearchitecture/artifacts/t2-ux.md#Primary page and navigation, Selected-file behavior"
+      output: "src/main/resources/web/index.html and src/main/resources/web/app.js"
+      evidence: "Headless Chrome verified selected-file feedback, clear behavior, operation switching, and keyboard reorder controls."
+    - upstream: ".github/modernize/rearchitecture/artifacts/t2-ux.md#Operation workflows and controls"
+      output: "src/main/resources/web/index.html and src/main/resources/web/app.js"
+      evidence: "Browser checks passed for split validation, merge minimum/order, sequential/random settings, permissions, and text extraction."
+    - upstream: ".github/modernize/rearchitecture/artifacts/wire_contracts.yaml#POST /api/split, /api/merge, /api/rename, /api/encrypt, /api/extract-text"
+      output: "src/main/resources/web/app.js"
+      evidence: "Existing HTTP integration tests passed for all five API routes; UI request fields match the documented contracts."
+    - upstream: ".github/modernize/rearchitecture/artifacts/t4-backend-implementation.md#Static resource routes"
+      output: "src/main/resources/web/index.html, src/main/resources/web/app.js, src/main/resources/web/styles.css"
+      evidence: "Packaged JAR returned HTTP 200 for GET /, /app.js, and /styles.css."
+    - upstream: ".github/modernize/rearchitecture/board.md#User Input"
+      output: "src/main/resources/web/index.html"
+      evidence: "Workbench states it is available only on this computer; packaged app was opened at 127.0.0.1."
+traceability:
+  - requirement: "Replace the Swing controls with a browser UI for all five existing PDF workflows."
+    plan_item: ".github/modernize/rearchitecture/artifacts/t2-ux.md"
+    task: "t5"
+    files:
+      - "src/main/resources/web/index.html"
+      - "src/main/resources/web/app.js"
+      - "src/main/resources/web/styles.css"
+    status: "completed"
+protocol_violation: false
+errors: []
+warnings:
+  - severity: "INFO"
+    message: "Maven reports existing unpinned maven-jar-plugin and Java 11 source/target module-path warnings; build succeeds."
+test_results:
+  t5:
+    command: "mvn -B clean test package"
+    passed: 2
+    failed: 0
+    skipped: 0
+    failures: []
+endpoint_probes:
+  - method: "GET"
+    path: "/"
+    status: 200
+    result: "PASS — packaged JAR serves the workbench."
+  - method: "GET"
+    path: "/app.js"
+    status: 200
+    result: "PASS — packaged JavaScript asset is available."
+  - method: "GET"
+    path: "/styles.css"
+    status: 200
+    result: "PASS — packaged stylesheet is available."
+  - method: "POST"
+    path: "/api/split"
+    status: 200
+    result: "PASS via existing Java HTTP integration test."
+  - method: "POST"
+    path: "/api/merge"
+    status: 200
+    result: "PASS via existing Java HTTP integration test."
+  - method: "POST"
+    path: "/api/rename"
+    status: 200
+    result: "PASS via existing Java HTTP integration test."
+  - method: "POST"
+    path: "/api/encrypt"
+    status: 200
+    result: "PASS via existing Java HTTP integration test."
+  - method: "POST"
+    path: "/api/extract-text"
+    status: 200
+    result: "PASS via existing Java HTTP integration test."
+browser_validation:
+  tool: "Headless Chrome via local Chrome DevTools Protocol"
+  status: "passed"
+  checks:
+    - "All five operation panels and action labels."
+    - "Split group-size inline error and enabled state after correction."
+    - "Merge minimum selection, enabled state, and reordering."
+    - "Random rename options and encryption password/permission controls."
+    - "Clear selection and file-count cap."
+    - "375px viewport has no horizontal overflow."

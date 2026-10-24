@@ -1,0 +1,64 @@
+unit: pdf-workbench
+side_effects:
+  - source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:629-635"
+    effect: "Selected file names are displayed in the workbench; cancel clears the selected-file list."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/model/PdfTools.java:103-131"
+    effect: "Split writes one or more PDF outputs adjacent to the source, using numbered suffixes (_0001.pdf onward) and the configured pages-per-part."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/model/PdfTools.java:135-149"
+    effect: "Merge writes a single PDF named from the first selected file with _merged.pdf appended."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java:19-34"
+    effect: "Rename sequentially produces prefix + incrementing number + .pdf; random mode adds a generated code to each original stem and writes an esporta.csv mapping in the process working directory."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/model/PdfTools.java:152-184"
+    effect: "Encryption writes a protected copy using the source stem plus _cript.pdf; owner password is pass+pass and user password is pass."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java:45-49"
+    effect: "Text extraction writes extracted text to a sibling source-stem _text.txt file."
+    must_preserve: true
+branches:
+  - source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:717-725; src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java:28-42"
+    condition: "Split-all is selected."
+    behavior: "Split at one page per output PDF."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:699-705; src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java:28-42"
+    condition: "Split-by-group is selected."
+    behavior: "Require a positive integer pages-per-part; reject invalid/non-positive input."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java:44-48"
+    condition: "Merge has fewer than two selected PDFs."
+    behavior: "Reject the operation with the existing Italian validation message."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/model/Pdf4UmModel.java:19-34"
+    condition: "Rename mode is sequential or random."
+    behavior: "Sequential mode uses the prefix and initial number; random mode uses a generated code of the configured length and optional symbols, plus a CSV mapping."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/model/PdfTools.java:159-164"
+    condition: "Encryption permission controls are submitted."
+    behavior: "The implementation inverts the allow flags into PDFBox restrictions; false allowOpen calls setReadOnly(), and print/copy/modify/assembly call setCanX(!allowX)."
+    must_preserve: true
+error_paths:
+  - source_loc: "src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java:67-79"
+    trigger: "An operation requires exactly one file but selected-file count differs, or a multi-file action has too few files."
+    outcome: "The UI shows an input validation warning."
+    contract: "Target HTTP response: 400 with a JSON error message; split/text require one file, merge requires at least two, rename/encrypt require at least one."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java:31-39"
+    trigger: "Split group size is not an integer or is less than one."
+    outcome: "The UI shows a validation warning rather than running the operation."
+    contract: "Target HTTP response: 400 with a JSON error message."
+    must_preserve: true
+  - source_loc: "src/main/java/com/mycompany/pdf4um/Main.java:717-795"
+    trigger: "PDFBox or file I/O raises IOException."
+    outcome: "The UI shows an operation-failed message; details are logged."
+    contract: "Target HTTP response: generic 422 for invalid/unreadable PDF input or 500 for unexpected I/O; do not return a path or stack trace."
+    must_preserve: true
+concurrency:
+  model: "sync"
+  tx_boundary:
+    source_loc: "src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java:28-65"
+    scope: "Each selected-file action runs synchronously through validation and model/PDFBox processing; no database or transaction boundary exists."
+    isolation: "No explicit isolation."
+    must_preserve: true

@@ -1,0 +1,12 @@
+unit: pdf-workbench
+commit: false
+candidate_splits:
+  - id: "src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java:28-65"
+    drivers: [concern_split]
+    rationale: >
+      The browser boundary exposes five independently validated PDF actions; separating
+      route adapters by operation may simplify request validation, but all operations share
+      one page, PDFBox utilities, and a small single-process runtime.
+    source_slice:
+      file: src/main/java/com/mycompany/pdf4um/controller/Pdf4UmController.java
+      lines: [28, 65]
