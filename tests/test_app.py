@@ -73,6 +73,8 @@ class PdfWorkbenchTest(unittest.TestCase):
         response = self.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"PDF", response.data)
+        self.assertIn(b'href="/" aria-label="Pdf4Um - torna alla home del sito"', response.data)
+        self.assertIn(b'class="home-link" href="/">', response.data)
         self.assertIn(b'href="styles.css"', response.data)
         self.assertIn(b'src="app.js"', response.data)
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
