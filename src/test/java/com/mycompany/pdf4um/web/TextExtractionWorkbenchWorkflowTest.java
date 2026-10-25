@@ -14,7 +14,7 @@ public class TextExtractionWorkbenchWorkflowTest extends WebWorkflowTestSupport 
         HttpResponse<byte[]> page = get("/");
         assertEquals(200, page.statusCode());
         String html = responseText(page);
-        assertTrue(html.contains("Disponibile solo su questo computer"));
+        assertTrue(html.contains("I PDF vengono elaborati temporaneamente"));
         assertTrue(html.contains("Estrai testo"));
         assertTrue(html.contains("Proteggi"));
 

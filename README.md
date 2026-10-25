@@ -1,32 +1,51 @@
-# pdf4umvc
+# Pdf4Um
 
-Pdf4Um is a localhost-only Java web application for working with PDF files.
-The Java/PDFBox processing code runs in a local HTTP server, and the workbench
-is opened in a browser at `http://127.0.0.1:8080`.
+Pdf4Um is a web workbench for splitting, merging, renaming, protecting, and
+extracting text from PDF files. The browser interface is served by a Python
+Flask backend, which processes uploads in a temporary workspace and returns
+the result as a download. Original files are not modified. Requests are limited
+to 100 MiB and multi-file operations accept up to 32 PDFs.
 
-The server binds only to `127.0.0.1`; it is not exposed to other computers on
-the network. Selected files are uploaded to the local process, processed in a
-temporary workspace, and returned as downloads. The application does not
-modify the selected originals. Each request is limited to 100 MiB and
-multi-file operations accept up to 32 PDFs.
+## Run locally
 
-## Build
-
-Requires Java 11 or later and Maven.
+Requires Python 3.10 or later.
 
 ```sh
-mvn test
-mvn package
-java -jar target/Pdf4Um-1.0-SNAPSHOT-jar-with-dependencies.jar
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python app.py
 ```
 
-Then open `http://127.0.0.1:8080` in a browser. Stop the server with
-`Ctrl+C`. To use another local port, pass a system property, for example:
+Open `http://127.0.0.1:8080`. The development server defaults to loopback;
+set `HOST` and `PORT` if you need to change the local bind address or port.
+
+Run the Python backend tests with:
 
 ```sh
-java -Dpdf4um.port=8090 -jar target/Pdf4Um-1.0-SNAPSHOT-jar-with-dependencies.jar
+python -m unittest discover -s tests
 ```
 
-Changing the port does not change the loopback-only binding. The application
-entry point remains `com.mycompany.pdf4um.Main` for existing Java launch
-configurations.
+## Deploy on HeliHost
+
+Use the Python/Flask application option in the hosting control panel if it is
+available for your account. Upload the project files (including `app.py`,
+`requirements.txt`, `tests/`, and `src/main/resources/web/`) to the configured
+application root, install the packages from `requirements.txt`, and configure
+the WSGI entry point as `app:app` if the panel asks for a module and variable.
+Follow HeliHost's current instructions for selecting the Python version,
+application root, and startup/restart action; those settings are account- and
+panel-specific. Do not expose the project directory as a browsable document
+root: the Flask app serves only the workbench assets and API routes.
+
+The app's `app` object is the production WSGI entry point. `python app.py` is
+intended for local development, not as a production server. Before public use,
+confirm the hosting upload limit and Python package installation support with
+HeliHost. Uploaded PDFs are sent to the server for processing, so use HTTPS
+and only publish the service on a plan with suitable resource limits.
+
+## Legacy Java application
+
+The original Java desktop application and Maven files remain in the repository.
+They are separate from the Flask website backend; Java is not required to run
+the Flask app.

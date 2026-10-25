@@ -1,0 +1,344 @@
+import io
+import logging
+import os
+import re
+import secrets
+import shutil
+import tempfile
+import zipfile
+from pathlib import Path
+
+from flask import Flask, Response, abort, jsonify, request, send_file
+from pypdf import PdfReader, PdfWriter
+from pypdf.constants import UserAccessPermissions
+from pypdf.errors import PdfReadError
+from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
+
+
+MAX_REQUEST_BYTES = 100 * 1024 * 1024
+MAX_FILES = 32
+RANDOM_ALPHABET = "[]()abcdefghijklmnopqrstuvwxyz#.&0123456789$£€,ABCDEFGHIJKLMNOPQRSTUVWXYZ@"
+WEB_DIRECTORY = Path(__file__).parent / "src" / "main" / "resources" / "web"
+LOGGER = logging.getLogger(__name__)
+
+
+class ApiProblem(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def create_app() -> Flask:
+    app = Flask(__name__)
+    app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BYTES
+
+    @app.after_request
+    def add_security_headers(response: Response) -> Response:
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.errorhandler(ApiProblem)
+    def handle_api_problem(error: ApiProblem):
+        return jsonify(error=error.args[0]), error.status
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_large_request(_error: RequestEntityTooLarge):
+        return jsonify(error="The upload exceeds the 100 MB request limit."), 413
+
+    @app.errorhandler(HTTPException)
+    def handle_http_error(error: HTTPException):
+        if request.path.startswith("/api/"):
+            return jsonify(error=error.description), error.code
+        return error
+
+    @app.errorhandler(Exception)
+    def handle_unexpected_error(error: Exception):
+        LOGGER.exception("Unexpected PDF workbench request failure.", exc_info=error)
+        return jsonify(error="The operation could not be completed."), 500
+
+    @app.get("/")
+    def index():
+        return _static_file("index.html")
+
+    @app.get("/app.js")
+    def javascript():
+        return _static_file("app.js", "text/javascript; charset=utf-8")
+
+    @app.get("/styles.css")
+    def stylesheet():
+        return _static_file("styles.css", "text/css; charset=utf-8")
+
+    @app.route(
+        "/api/<path:operation>",
+        methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+        provide_automatic_options=False,
+    )
+    def api(operation: str):
+        if operation not in {"split", "merge", "rename", "encrypt", "extract-text"}:
+            abort(404)
+        if request.method != "POST":
+            abort(405)
+
+        workspace = Path(tempfile.mkdtemp(prefix="pdf4um-request-"))
+        try:
+            response = _run_operation(operation, workspace)
+        except Exception:
+            _remove_workspace(workspace)
+            raise
+        return response
+
+    return app
+
+
+def _static_file(name: str, mimetype: str = "text/html; charset=utf-8"):
+    path = WEB_DIRECTORY / name
+    if not path.is_file():
+        abort(503, description="The browser workbench has not been packaged.")
+    return send_file(path, mimetype=mimetype, conditional=False)
+
+
+def _run_operation(operation: str, workspace: Path) -> Response:
+    input_directory = workspace / "input"
+    input_directory.mkdir()
+
+    if operation == "split":
+        uploads = _save_uploads("file", 1, 1, input_directory)
+        pages_per_part = _integer(_text("pagesPerPart", "1"), "pagesPerPart")
+        if pages_per_part < 1:
+            raise ApiProblem(400, "Pages per part must be greater than zero.")
+        readers = _readable_pdfs(uploads)
+        stem = uploads[0].stem
+        outputs = []
+        reader = readers[0]
+        for start in range(0, len(reader.pages), pages_per_part):
+            writer = PdfWriter()
+            for page in reader.pages[start : start + pages_per_part]:
+                writer.add_page(page)
+            output = input_directory / f"{stem}_{len(outputs) + 1:04d}.pdf"
+            with output.open("wb") as stream:
+                writer.write(stream)
+            outputs.append(output)
+        if not outputs:
+            raise OSError("No split documents were generated.")
+        return _zip_response(outputs, workspace, "split-pdfs.zip")
+
+    if operation == "merge":
+        uploads = _save_uploads("files", 2, MAX_FILES, input_directory)
+        readers = _readable_pdfs(uploads)
+        writer = PdfWriter()
+        for reader in readers:
+            writer.append(reader)
+        output = input_directory / f"{uploads[0].stem}_merged.pdf"
+        with output.open("wb") as stream:
+            writer.write(stream)
+        return _file_response(output, workspace, "application/pdf")
+
+    if operation == "rename":
+        uploads = _save_uploads("files", 1, MAX_FILES, input_directory)
+        mode = _text("mode", "")
+        if mode not in {"sequential", "random"}:
+            raise ApiProblem(400, "Rename mode must be sequential or random.")
+        prefix = _safe_prefix(_text("prefix", ""))
+        starting_number = _integer(_text("startingNumber", "0"), "startingNumber")
+        code_length = _integer(_text("codeLength", "8"), "codeLength")
+        use_symbols = _boolean("useSymbols", False)
+        if starting_number < 0 or starting_number > 9:
+            raise ApiProblem(400, "Starting number must be between 0 and 9.")
+        if code_length < 4 or code_length > 20:
+            raise ApiProblem(400, "Random code length must be between 4 and 20.")
+        _readable_pdfs(uploads)
+        output_directory = workspace / "renamed"
+        output_directory.mkdir()
+        outputs = []
+        csv_rows = []
+        for index, source in enumerate(uploads):
+            if mode == "sequential":
+                output_name = f"{prefix}{starting_number + index}.pdf"
+            else:
+                alphabet = RANDOM_ALPHABET if use_symbols else "0123456789"
+                code = "".join(secrets.choice(alphabet) for _ in range(code_length))
+                output_name = f"{source.stem}{code}.pdf"
+                csv_rows.append(f".pdf;{code}\n")
+            output = output_directory / output_name
+            shutil.copyfile(source, output)
+            outputs.append(output)
+        if mode == "random":
+            export = output_directory / "esporta.csv"
+            export.write_text("".join(csv_rows), encoding="utf-8")
+            outputs.append(export)
+        return _zip_response(outputs, workspace, "renamed-pdfs.zip")
+
+    if operation == "encrypt":
+        uploads = _save_uploads("files", 1, MAX_FILES, input_directory)
+        password = _text("password", "")
+        if not password:
+            raise ApiProblem(400, "Password is required.")
+        allow_open = _boolean("allowOpen", False)
+        allow_print = _boolean("allowPrint", False)
+        allow_copy = _boolean("allowCopy", False)
+        allow_modify = _boolean("allowModify", False)
+        allow_assembly = _boolean("allowAssembly", False)
+        readers = _readable_pdfs(uploads)
+        permissions = UserAccessPermissions(0)
+        if allow_print:
+            permissions |= UserAccessPermissions.PRINT
+        if allow_copy:
+            permissions |= UserAccessPermissions.EXTRACT
+        if allow_modify:
+            permissions |= UserAccessPermissions.MODIFY
+        if allow_assembly:
+            permissions |= UserAccessPermissions.ASSEMBLE_DOC
+        outputs = []
+        for source, reader in zip(uploads, readers):
+            writer = PdfWriter()
+            writer.append(reader)
+            writer.encrypt(
+                user_password="" if allow_open else password,
+                owner_password=password + password,
+                permissions_flag=permissions,
+                algorithm="AES-256",
+            )
+            output = input_directory / f"{source.stem}_cript.pdf"
+            with output.open("wb") as stream:
+                writer.write(stream)
+            outputs.append(output)
+        return _zip_response(outputs, workspace, "encrypted-pdfs.zip")
+
+    uploads = _save_uploads("file", 1, 1, input_directory)
+    reader = _readable_pdfs(uploads)[0]
+    output = workspace / f"{uploads[0].stem}_text.txt"
+    output.write_text("".join(page.extract_text() or "" for page in reader.pages), encoding="utf-8")
+    return _file_response(output, workspace, "text/plain; charset=utf-8")
+
+
+def _save_uploads(field_name: str, minimum: int, maximum: int, directory: Path) -> list[Path]:
+    parts = request.files.getlist(field_name)
+    if len(parts) < minimum or len(parts) > maximum:
+        if minimum == 2:
+            message = "Select at least two PDF files."
+        elif minimum == maximum == 1:
+            message = "Select exactly one PDF file."
+        else:
+            message = "Select at least one PDF file."
+        raise ApiProblem(400, message)
+
+    used_names = set()
+    files = []
+    for index, part in enumerate(parts, start=1):
+        if not part.filename or not part.filename.strip():
+            raise ApiProblem(400, "A PDF file is required.")
+        filename = _safe_pdf_filename(part.filename, index, used_names)
+        destination = directory / filename
+        part.save(destination)
+        files.append(destination)
+    return files
+
+
+def _safe_pdf_filename(supplied_name: str, index: int, used_names: set[str]) -> str:
+    leaf = supplied_name.replace("\\", "/").rsplit("/", 1)[-1]
+    leaf = "".join(char for char in leaf if ord(char) >= 32 and ord(char) != 127).strip()
+    if not leaf.lower().endswith(".pdf"):
+        raise ApiProblem(415, "Only PDF files are supported.")
+    base = re.sub(r'[<>:"/\\|?*]', "_", leaf[:-4]).strip()
+    if not base or base in {".", ".."}:
+        base = f"upload-{index}"
+    filename = f"{base}.pdf"
+    duplicate = 2
+    while filename.casefold() in used_names:
+        filename = f"{base} ({duplicate}).pdf"
+        duplicate += 1
+    used_names.add(filename.casefold())
+    return filename
+
+
+def _readable_pdfs(files: list[Path]) -> list[PdfReader]:
+    readers = []
+    for path in files:
+        try:
+            reader = PdfReader(path, strict=False)
+            if reader.is_encrypted:
+                raise PdfReadError("Encrypted PDFs require a password.")
+            _ = len(reader.pages)
+            readers.append(reader)
+        except (OSError, PdfReadError, ValueError) as error:
+            raise ApiProblem(422, "One or more PDFs are unreadable or password protected.") from error
+    return readers
+
+
+def _text(name: str, default: str) -> str:
+    values = request.form.getlist(name)
+    if not values:
+        return default
+    if len(values) != 1:
+        raise ApiProblem(400, f"Invalid field: {name}")
+    return values[0]
+
+
+def _integer(value: str, field: str) -> int:
+    try:
+        return int(value.strip())
+    except ValueError as error:
+        raise ApiProblem(400, f"Invalid {field} value.") from error
+
+
+def _boolean(name: str, default: bool) -> bool:
+    value = _text(name, "")
+    if not value:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"true", "on", "1", "yes"}:
+        return True
+    if normalized in {"false", "off", "0", "no"}:
+        return False
+    raise ApiProblem(400, f"Invalid {name} value.")
+
+
+def _safe_prefix(prefix: str) -> str:
+    safe = "".join(char for char in prefix if ord(char) >= 32 and ord(char) != 127)
+    safe = re.sub(r'[<>:"/\\|?*]', "_", safe)
+    return safe[:100]
+
+
+def _zip_response(files: list[Path], workspace: Path, download_name: str) -> Response:
+    if not files or any(not path.is_file() for path in files):
+        raise OSError("Expected output files were not created.")
+    archive = workspace / download_name
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
+        for path in files:
+            output.write(path, arcname=path.name)
+    return _file_response(archive, workspace, "application/zip")
+
+
+def _file_response(path: Path, workspace: Path, mimetype: str) -> Response:
+    if not path.is_file():
+        raise OSError("Expected output file was not created.")
+    response = send_file(
+        path,
+        mimetype=mimetype,
+        as_attachment=True,
+        download_name=path.name,
+        conditional=False,
+    )
+    response.call_on_close(lambda: _remove_workspace(workspace))
+    return response
+
+
+def _remove_workspace(workspace: Path) -> None:
+    try:
+        shutil.rmtree(workspace)
+    except FileNotFoundError:
+        return
+    except OSError:
+        LOGGER.exception("Unable to remove a temporary PDF work directory.")
+
+
+app = create_app()
+
+
+if __name__ == "__main__":
+    app.run(
+        host=os.environ.get("HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "8080")),
+    )
