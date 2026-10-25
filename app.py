@@ -18,7 +18,24 @@ from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 MAX_REQUEST_BYTES = 100 * 1024 * 1024
 MAX_FILES = 32
 RANDOM_ALPHABET = "[]()abcdefghijklmnopqrstuvwxyz#.&0123456789$£€,ABCDEFGHIJKLMNOPQRSTUVWXYZ@"
-WEB_DIRECTORY = Path(__file__).parent / "src" / "main" / "resources" / "web"
+APP_DIRECTORY = Path(__file__).resolve().parent
+SOURCE_WEB_DIRECTORY = APP_DIRECTORY / "src" / "main" / "resources" / "web"
+DEPLOY_WEB_DIRECTORY = APP_DIRECTORY / "pdf4um-web"
+CONFIGURED_WEB_DIRECTORY = os.environ.get("PDF4UM_WEB_DIRECTORY")
+WEB_DIRECTORY = (
+    Path(CONFIGURED_WEB_DIRECTORY).expanduser()
+    if CONFIGURED_WEB_DIRECTORY
+    else next(
+        (
+            directory
+            for directory in (SOURCE_WEB_DIRECTORY, DEPLOY_WEB_DIRECTORY)
+            if all((directory / name).is_file() for name in ("index.html", "app.js", "styles.css"))
+        ),
+        SOURCE_WEB_DIRECTORY,
+    )
+)
+if not WEB_DIRECTORY.is_absolute():
+    WEB_DIRECTORY = APP_DIRECTORY / WEB_DIRECTORY
 LOGGER = logging.getLogger(__name__)
 
 
@@ -95,7 +112,13 @@ def create_app() -> Flask:
 def _static_file(name: str, mimetype: str = "text/html; charset=utf-8"):
     path = WEB_DIRECTORY / name
     if not path.is_file():
-        abort(503, description="The browser workbench has not been packaged.")
+        abort(
+            503,
+            description=(
+                "The browser workbench assets are missing. Provide index.html, app.js, "
+                "and styles.css in the PDF4UM_WEB_DIRECTORY folder."
+            ),
+        )
     return send_file(path, mimetype=mimetype, conditional=False)
 
 

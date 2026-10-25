@@ -29,14 +29,24 @@ python -m unittest discover -s tests
 ## Deploy on HeliHost
 
 Use the Python/Flask application option in the hosting control panel if it is
-available for your account. Upload the project files (including `app.py`,
-`requirements.txt`, `tests/`, and `src/main/resources/web/`) to the configured
-application root, install the packages from `requirements.txt`, and configure
-the WSGI entry point as `app:app` if the panel asks for a module and variable.
+available for your account. Upload `app.py`, `requirements.txt`, and the three
+browser files (`index.html`, `app.js`, and `styles.css`) to the configured
+application root. Keep the browser files in either
+`src/main/resources/web/` or a separate `pdf4um-web/` subdirectory. The
+existing website's root `index.html` is independent and should not be replaced.
+If the browser files are in a different directory, set
+`PDF4UM_WEB_DIRECTORY` to that directory (absolute, or relative to `app.py`).
+Install the packages from `requirements.txt`, and configure the WSGI entry
+point as `app:app` if the panel asks for a module and variable.
 Follow HeliHost's current instructions for selecting the Python version,
 application root, and startup/restart action; those settings are account- and
 panel-specific. Do not expose the project directory as a browsable document
 root: the Flask app serves only the workbench assets and API routes.
+
+When the Flask application is mounted under a URL prefix such as
+`/flask.wsgi/`, open that URL with its trailing slash. The frontend uses
+relative asset and API URLs so they remain under the Flask mount instead of
+being sent to the main website's root.
 
 The app's `app` object is the production WSGI entry point. `python app.py` is
 intended for local development, not as a production server. Before public use,

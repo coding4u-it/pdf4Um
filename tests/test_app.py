@@ -73,9 +73,24 @@ class PdfWorkbenchTest(unittest.TestCase):
         response = self.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"PDF", response.data)
+        self.assertIn(b'href="styles.css"', response.data)
+        self.assertIn(b'src="app.js"', response.data)
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
-        self.assertEqual(self.get("/app.js").status_code, 200)
+        javascript = self.get("/app.js")
+        self.assertEqual(javascript.status_code, 200)
+        self.assertIn(b'fetch("api/"', javascript.data)
         self.assertEqual(self.get("/styles.css").status_code, 200)
+
+    def test_workbench_routes_work_when_mounted_under_wsgi_prefix(self):
+        environ = {"SCRIPT_NAME": "/flask.wsgi"}
+        page = self.client.get("/", environ_overrides=environ, buffered=True)
+        self.addCleanup(page.close)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'href="styles.css"', page.data)
+
+        stylesheet = self.client.get("/styles.css", environ_overrides=environ, buffered=True)
+        self.addCleanup(stylesheet.close)
+        self.assertEqual(stylesheet.status_code, 200)
 
     def test_split_and_merge_preserve_page_counts_and_order(self):
         split = self.post(

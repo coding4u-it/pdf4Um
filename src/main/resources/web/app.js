@@ -368,7 +368,7 @@
     renderFiles();
 
     try {
-      const response = await fetch("/api/" + (operation === "extract" ? "extract-text" : operation), {
+      const response = await fetch("api/" + (operation === "extract" ? "extract-text" : operation), {
         method: "POST",
         body: formData
       });
