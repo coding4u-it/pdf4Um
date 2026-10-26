@@ -124,6 +124,10 @@ def create_app() -> Flask:
 def _static_file(name: str, mimetype: str = "text/html; charset=utf-8"):
     root_asset_name = ROOT_ASSET_NAMES.get(name)
     root_asset = APP_DIRECTORY / root_asset_name if root_asset_name else None
+    if name == "logoinfo.png":
+        uploaded_logo = APP_DIRECTORY / name
+        if uploaded_logo.is_file():
+            root_asset = uploaded_logo
     path = root_asset if root_asset and root_asset.is_file() else WEB_DIRECTORY / name
     if not path.is_file():
         abort(

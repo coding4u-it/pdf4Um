@@ -83,7 +83,7 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertIn(b"PDF", response.data)
         self.assertIn(b'href="/" aria-label="Torna alla home di In4matika"', response.data)
         self.assertIn(
-            b'src="/images/1024/28872054/logoinfo-d53gbeyfFc7SlZLMHTB4XQ.png" alt="In4matika"',
+            b'src="logoinfo.png" alt="In4matika"',
             response.data,
         )
         self.assertIn(b'class="home-link" href="/">Home</a>', response.data)
@@ -129,6 +129,20 @@ class PdfWorkbenchTest(unittest.TestCase):
             self.assertEqual(javascript.data, b"workbench script")
             self.assertEqual(stylesheet.data, b"workbench styles")
             self.assertEqual(logo.data, b"\x89PNG\r\n\x1a\n")
+
+    def test_serves_logo_uploaded_directly_beside_app(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app_directory = Path(directory)
+            (app_directory / "logoinfo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+            with (
+                patch.object(pdf4um_app, "APP_DIRECTORY", app_directory),
+                patch.object(pdf4um_app, "WEB_DIRECTORY", app_directory / "removed-folder"),
+            ):
+                response = self.get("/logoinfo.png")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.mimetype, "image/png")
+            self.assertEqual(response.data, b"\x89PNG\r\n\x1a\n")
 
     def test_prefers_deployed_web_assets_to_legacy_source_assets(self):
         with tempfile.TemporaryDirectory() as directory:
