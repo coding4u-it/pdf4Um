@@ -98,6 +98,20 @@ class PdfWorkbenchTest(unittest.TestCase):
             self.assertEqual(response.mimetype, "image/png")
             self.assertEqual(response.data, b"\x89PNG\r\n\x1a\n")
 
+    def test_prefers_deployed_web_assets_to_legacy_source_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app_directory = Path(directory)
+            deployed_assets = app_directory / "pdf4um-web"
+            legacy_assets = app_directory / "src" / "main" / "resources" / "web"
+            for assets in (deployed_assets, legacy_assets):
+                assets.mkdir(parents=True)
+                for filename in ("index.html", "app.js", "styles.css"):
+                    (assets / filename).touch()
+
+            resolved = pdf4um_app._resolve_web_directory(app_directory, None)
+
+            self.assertEqual(resolved, deployed_assets)
+
     def test_workbench_routes_work_when_mounted_under_wsgi_prefix(self):
         environ = {"SCRIPT_NAME": "/flask.wsgi"}
         page = self.client.get("/", environ_overrides=environ, buffered=True)

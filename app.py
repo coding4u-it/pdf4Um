@@ -22,20 +22,22 @@ APP_DIRECTORY = Path(__file__).resolve().parent
 SOURCE_WEB_DIRECTORY = APP_DIRECTORY / "src" / "main" / "resources" / "web"
 DEPLOY_WEB_DIRECTORY = APP_DIRECTORY / "pdf4um-web"
 CONFIGURED_WEB_DIRECTORY = os.environ.get("PDF4UM_WEB_DIRECTORY")
-WEB_DIRECTORY = (
-    Path(CONFIGURED_WEB_DIRECTORY).expanduser()
-    if CONFIGURED_WEB_DIRECTORY
-    else next(
-        (
-            directory
-            for directory in (SOURCE_WEB_DIRECTORY, DEPLOY_WEB_DIRECTORY)
-            if all((directory / name).is_file() for name in ("index.html", "app.js", "styles.css"))
-        ),
-        SOURCE_WEB_DIRECTORY,
-    )
-)
-if not WEB_DIRECTORY.is_absolute():
-    WEB_DIRECTORY = APP_DIRECTORY / WEB_DIRECTORY
+
+
+def _resolve_web_directory(app_directory: Path, configured_directory: str | None) -> Path:
+    if configured_directory:
+        directory = Path(configured_directory).expanduser()
+        return directory if directory.is_absolute() else app_directory / directory
+
+    required_files = ("index.html", "app.js", "styles.css")
+    for directory in (app_directory / "pdf4um-web",
+                      app_directory / "src" / "main" / "resources" / "web"):
+        if all((directory / name).is_file() for name in required_files):
+            return directory
+    return app_directory / "pdf4um-web"
+
+
+WEB_DIRECTORY = _resolve_web_directory(APP_DIRECTORY, CONFIGURED_WEB_DIRECTORY)
 LOGGER = logging.getLogger(__name__)
 
 
