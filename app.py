@@ -14,9 +14,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from pypdf import PdfReader, PdfWriter
 from pypdf.constants import UserAccessPermissions
 from pypdf.errors import PdfReadError
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.utils import ImageReader
-from reportlab.pdfgen import canvas
+from pypdf import Transformation
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
 
@@ -24,6 +22,8 @@ MAX_REQUEST_BYTES = 100 * 1024 * 1024
 MAX_FILES = 32
 MAX_IMAGE_PIXELS = 40_000_000
 MAX_TOTAL_IMAGE_PIXELS = 100_000_000
+A4_WIDTH = 595.275590551
+A4_HEIGHT = 841.88976378
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 RANDOM_ALPHABET = "[]()abcdefghijklmnopqrstuvwxyz#.&0123456789$£€,ABCDEFGHIJKLMNOPQRSTUVWXYZ@"
 APP_DIRECTORY = Path(__file__).resolve().parent
@@ -326,12 +326,12 @@ def _save_image_uploads(directory: Path) -> list[Path]:
 
 
 def _images_to_pdf(images: list[Path], output: Path) -> None:
-    page_width, page_height = A4
+    page_width, page_height = A4_WIDTH, A4_HEIGHT
     margin = 36
     available_width = page_width - margin * 2
     available_height = page_height - margin * 2
     total_pixels = 0
-    pdf = canvas.Canvas(str(output), pagesize=A4, pageCompression=1)
+    pdf = PdfWriter()
 
     try:
         with warnings.catch_warnings():
@@ -363,21 +363,25 @@ def _images_to_pdf(images: list[Path], output: Path) -> None:
                         else:
                             image = image.convert("RGB")
 
-                        width, height = image.size
-                        scale = min(available_width / width, available_height / height)
-                        draw_width = width * scale
-                        draw_height = height * scale
+                        image_pdf = io.BytesIO()
+                        image.save(image_pdf, format="PDF", resolution=72)
+                        image_pdf.seek(0)
+                        image_page = PdfReader(image_pdf).pages[0]
+                        image_width = float(image_page.mediabox.width)
+                        image_height = float(image_page.mediabox.height)
+                        scale = min(
+                            available_width / image_width,
+                            available_height / image_height,
+                        )
+                        draw_width = image_width * scale
+                        draw_height = image_height * scale
                         x = (page_width - draw_width) / 2
                         y = (page_height - draw_height) / 2
-                        pdf.drawImage(
-                            ImageReader(image),
-                            x,
-                            y,
-                            width=draw_width,
-                            height=draw_height,
-                            preserveAspectRatio=True,
+                        page = pdf.add_blank_page(width=page_width, height=page_height)
+                        page.merge_transformed_page(
+                            image_page,
+                            Transformation().scale(scale).translate(x, y),
                         )
-                        pdf.showPage()
                 except ApiProblem:
                     raise
                 except (
@@ -388,7 +392,8 @@ def _images_to_pdf(images: list[Path], output: Path) -> None:
                     ValueError,
                 ) as error:
                     raise ApiProblem(422, "One or more images are unreadable.") from error
-        pdf.save()
+        with output.open("wb") as stream:
+            pdf.write(stream)
     except Exception:
         output.unlink(missing_ok=True)
         raise
