@@ -41,18 +41,15 @@ application outside `httpdocs` and leave only the WSGI entry point there:
     ├── app.py
     ├── requirements.txt
     ├── venv/                      # Created on the host
-    └── pdf4um-web/
-        ├── index.html
-        ├── app.js
-        ├── styles.css
-        └── logoinfo.png
+    └── src/main/resources/web/    # Browser assets from the GitHub repository
 ```
 
 The supplied WSGI file resolves `pdf4um/` as the sibling of `httpdocs/`,
-loads its virtualenv site-packages for the Python version running mod_wsgi,
-sets `PDF4UM_WEB_DIRECTORY`, and imports the Flask application. Keep the
-`/flask.wsgi/` mapping configured in HeliHost and restart the Python app after
-uploading files.
+uses `pdf4um-web/` when that folder contains the browser assets or otherwise
+uses `src/main/resources/web/`, loads its virtualenv site-packages for the
+Python version running mod_wsgi, sets `PDF4UM_WEB_DIRECTORY`, and imports the
+Flask application. Keep the `/flask.wsgi/` mapping configured in HeliHost and
+restart the Python app after uploading files.
 
 Create the virtualenv on HeliHost using the exact Python version selected for
 the WSGI application, then install the requirements from the application
@@ -64,10 +61,12 @@ python3.14 -m venv venv
 venv/bin/python -m pip install -r requirements.txt
 ```
 
-Upload the Python files from the repository root into `pdf4um/`, and copy the
-four browser assets from `src/main/resources/web/` into `pdf4um/pdf4um-web/`.
-Do not upload the local `.venv` from a development machine; create the
-virtualenv on the host.
+Upload the repository into `pdf4um/` with the `src/main/resources/web/` folder
+intact. Alternatively, copy `index.html`, `app.js`, and `styles.css` into
+`pdf4um/pdf4um-web/`; that folder takes precedence when present. The logo is
+optional and can be uploaded as `logoinfo.png` beside `app.py` or in the
+selected web assets folder. Do not upload the local `.venv` from a development
+machine; create the virtualenv on the host.
 
 When the Flask application is mounted under a URL prefix such as
 `/flask.wsgi/`, open that URL with its trailing slash. The frontend uses
