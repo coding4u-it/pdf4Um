@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
@@ -45,6 +46,12 @@ def make_text_pdf(text: str) -> bytes:
     page[NameObject("/Contents")] = writer._add_object(content)
     output = io.BytesIO()
     writer.write(output)
+    return output.getvalue()
+
+
+def make_image(format_name: str, color: str, size: tuple[int, int] = (120, 80)) -> bytes:
+    output = io.BytesIO()
+    Image.new("RGB", size, color).save(output, format=format_name)
     return output.getvalue()
 
 
@@ -90,6 +97,8 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertNotIn(b"Chi Siamo", response.data)
         self.assertNotIn(b"Servizi", response.data)
         self.assertNotIn(b"Contattaci", response.data)
+        self.assertIn(b'value="images-to-pdf"', response.data)
+        self.assertIn(b"Converti immagini in PDF", response.data)
         self.assertIn(b'href="styles.css"', response.data)
         self.assertIn(b'src="app.js"', response.data)
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
@@ -192,6 +201,45 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertEqual(merged.status_code, 200)
         self.assertIn("First_merged.pdf", merged.headers["Content-Disposition"])
         self.assertEqual(len(PdfReader(io.BytesIO(merged.data)).pages), 3)
+
+    def test_converts_multiple_jpg_and_png_images_to_a4_pdf_in_order(self):
+        response = self.post(
+            "/api/images-to-pdf",
+            {
+                "images": [
+                    self.upload("first.jpg", make_image("JPEG", "red")),
+                    self.upload("second.png", make_image("PNG", "blue")),
+                ]
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "application/pdf")
+        self.assertIn("immagini.pdf", response.headers["Content-Disposition"])
+        reader = PdfReader(io.BytesIO(response.data))
+        self.assertEqual(len(reader.pages), 2)
+        for index, page in enumerate(reader.pages):
+            self.assertAlmostEqual(float(page.mediabox.width), 595.27, places=1)
+            self.assertAlmostEqual(float(page.mediabox.height), 841.89, places=1)
+            self.assertTrue(page.images)
+            pixel = page.images[0].image.convert("RGB").getpixel((0, 0))
+            if index == 0:
+                self.assertGreater(pixel[0], pixel[2])
+            else:
+                self.assertGreater(pixel[2], pixel[0])
+
+    def test_image_conversion_rejects_unsupported_and_unreadable_files(self):
+        unsupported = self.post(
+            "/api/images-to-pdf",
+            {"images": self.upload("animation.gif", b"not an image")},
+        )
+        self.assertEqual(unsupported.status_code, 415)
+
+        unreadable = self.post(
+            "/api/images-to-pdf",
+            {"images": self.upload("broken.png", b"not a PNG")},
+        )
+        self.assertEqual(unreadable.status_code, 422)
 
     def test_rename_sequential_and_random(self):
         sequential = self.post(

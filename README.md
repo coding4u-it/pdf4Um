@@ -1,10 +1,11 @@
 # Pdf4Um
 
-Pdf4Um is a web workbench for splitting, merging, renaming, protecting, and
-extracting text from PDF files. The browser interface is served by a Python
-Flask backend, which processes uploads in a temporary workspace and returns
-the result as a download. Original files are not modified. Requests are limited
-to 100 MiB and multi-file operations accept up to 32 PDFs.
+Pdf4Um is a web workbench for converting JPG/PNG images to PDF, splitting,
+merging, renaming, protecting, and extracting text from PDF files. The browser
+interface is served by a Python Flask backend, which processes uploads in a
+temporary workspace and returns the result as a download. Image conversion
+creates one A4 page per image in the selected order. Original files are not
+modified. Requests are limited to 100 MiB and operations accept up to 32 files.
 
 ## Run locally
 

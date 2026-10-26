@@ -414,7 +414,7 @@ h1 {
 
 .operation-choice {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
   margin: 0 0 23px;
   padding: 5px;
@@ -838,13 +838,14 @@ h1 {
   }
 
   .operation-choice {
-    gap: 2px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
     padding: 3px;
   }
 
   .operation-option span {
-    padding-inline: 2px;
-    font-size: 0.65rem;
+    padding-inline: 4px;
+    font-size: 0.72rem;
   }
 
   .action-row {

@@ -6,17 +6,25 @@ import secrets
 import shutil
 import tempfile
 import zipfile
+import warnings
 from pathlib import Path
 
 from flask import Flask, Response, abort, jsonify, request, send_file
+from PIL import Image, ImageOps, UnidentifiedImageError
 from pypdf import PdfReader, PdfWriter
 from pypdf.constants import UserAccessPermissions
 from pypdf.errors import PdfReadError
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
 
 MAX_REQUEST_BYTES = 100 * 1024 * 1024
 MAX_FILES = 32
+MAX_IMAGE_PIXELS = 40_000_000
+MAX_TOTAL_IMAGE_PIXELS = 100_000_000
+SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 RANDOM_ALPHABET = "[]()abcdefghijklmnopqrstuvwxyz#.&0123456789$£€,ABCDEFGHIJKLMNOPQRSTUVWXYZ@"
 APP_DIRECTORY = Path(__file__).resolve().parent
 SOURCE_WEB_DIRECTORY = APP_DIRECTORY / "src" / "main" / "resources" / "web"
@@ -105,7 +113,9 @@ def create_app() -> Flask:
         provide_automatic_options=False,
     )
     def api(operation: str):
-        if operation not in {"split", "merge", "rename", "encrypt", "extract-text"}:
+        if operation not in {
+            "split", "merge", "rename", "encrypt", "extract-text", "images-to-pdf"
+        }:
             abort(404)
         if request.method != "POST":
             abort(405)
@@ -248,6 +258,12 @@ def _run_operation(operation: str, workspace: Path) -> Response:
             outputs.append(output)
         return _zip_response(outputs, workspace, "encrypted-pdfs.zip")
 
+    if operation == "images-to-pdf":
+        uploads = _save_image_uploads(input_directory)
+        output = input_directory / "immagini.pdf"
+        _images_to_pdf(uploads, output)
+        return _file_response(output, workspace, "application/pdf")
+
     uploads = _save_uploads("file", 1, 1, input_directory)
     reader = _readable_pdfs(uploads)[0]
     output = workspace / f"{uploads[0].stem}_text.txt"
@@ -276,6 +292,106 @@ def _save_uploads(field_name: str, minimum: int, maximum: int, directory: Path) 
         part.save(destination)
         files.append(destination)
     return files
+
+
+def _save_image_uploads(directory: Path) -> list[Path]:
+    parts = request.files.getlist("images")
+    if not parts or len(parts) > MAX_FILES:
+        raise ApiProblem(400, "Select between one and 32 JPG or PNG images.")
+
+    used_names = set()
+    files = []
+    for index, part in enumerate(parts, start=1):
+        if not part.filename or not part.filename.strip():
+            raise ApiProblem(400, "An image file is required.")
+        supplied_name = part.filename.replace("\\", "/").rsplit("/", 1)[-1]
+        suffix = Path(supplied_name).suffix.lower()
+        if suffix not in SUPPORTED_IMAGE_SUFFIXES:
+            raise ApiProblem(415, "Only JPG and PNG images are supported.")
+
+        base = re.sub(r'[<>:"/\\|?*]', "_", supplied_name[:-len(Path(supplied_name).suffix)])
+        base = "".join(char for char in base if ord(char) >= 32 and ord(char) != 127).strip()
+        if not base or base in {".", ".."}:
+            base = f"image-{index}"
+        filename = f"{base}{suffix}"
+        duplicate = 2
+        while filename.casefold() in used_names:
+            filename = f"{base} ({duplicate}).{suffix.lstrip('.')}"
+            duplicate += 1
+        used_names.add(filename.casefold())
+        destination = directory / filename
+        part.save(destination)
+        files.append(destination)
+    return files
+
+
+def _images_to_pdf(images: list[Path], output: Path) -> None:
+    page_width, page_height = A4
+    margin = 36
+    available_width = page_width - margin * 2
+    available_height = page_height - margin * 2
+    total_pixels = 0
+    pdf = canvas.Canvas(str(output), pagesize=A4, pageCompression=1)
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            for image_path in images:
+                try:
+                    with Image.open(image_path) as source:
+                        if source.format not in {"JPEG", "PNG"}:
+                            raise ApiProblem(415, "Only JPG and PNG images are supported.")
+                        width, height = source.size
+                        pixels = width * height
+                        total_pixels += pixels
+                        if pixels > MAX_IMAGE_PIXELS or total_pixels > MAX_TOTAL_IMAGE_PIXELS:
+                            raise ApiProblem(
+                                413,
+                                "The images exceed the supported total pixel limit.",
+                            )
+                        source.verify()
+
+                    with Image.open(image_path) as source:
+                        image = ImageOps.exif_transpose(source)
+                        if image.mode in {"RGBA", "LA"} or (
+                            image.mode == "P" and "transparency" in image.info
+                        ):
+                            rgba = image.convert("RGBA")
+                            background = Image.new("RGB", rgba.size, "white")
+                            background.paste(rgba, mask=rgba.getchannel("A"))
+                            image = background
+                        else:
+                            image = image.convert("RGB")
+
+                        width, height = image.size
+                        scale = min(available_width / width, available_height / height)
+                        draw_width = width * scale
+                        draw_height = height * scale
+                        x = (page_width - draw_width) / 2
+                        y = (page_height - draw_height) / 2
+                        pdf.drawImage(
+                            ImageReader(image),
+                            x,
+                            y,
+                            width=draw_width,
+                            height=draw_height,
+                            preserveAspectRatio=True,
+                        )
+                        pdf.showPage()
+                except ApiProblem:
+                    raise
+                except (
+                    Image.DecompressionBombError,
+                    Image.DecompressionBombWarning,
+                    UnidentifiedImageError,
+                    OSError,
+                    ValueError,
+                ) as error:
+                    raise ApiProblem(422, "One or more images are unreadable.") from error
+        pdf.save()
+    except Exception:
+        output.unlink(missing_ok=True)
+        raise
 
 
 def _safe_pdf_filename(supplied_name: str, index: int, used_names: set[str]) -> str:

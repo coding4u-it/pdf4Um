@@ -33,7 +33,7 @@
       <div class="step-heading">
         <span class="step-number" aria-hidden="true">1</span>
         <div>
-          <h2 id="selection-heading">Seleziona i PDF</h2>
+          <h2 id="selection-heading">Seleziona i file</h2>
           <p>Scegli i documenti da elaborare. Gli originali non verranno modificati.</p>
         </div>
       </div>
@@ -41,11 +41,11 @@
       <input class="visually-hidden" id="file-picker" type="file" accept=".pdf,application/pdf" multiple>
       <label class="file-picker" for="file-picker">
         <span class="picker-icon" aria-hidden="true">＋</span>
-        <span><strong>Scegli PDF</strong><small>Massimo 32 PDF e 100 MiB complessivi per operazione</small></span>
+        <span><strong id="picker-title">Scegli PDF</strong><small id="picker-help">Massimo 32 PDF e 100 MiB complessivi per operazione</small></span>
       </label>
 
       <div class="selection-toolbar">
-        <p id="selection-count" class="selection-count" aria-live="polite">Nessun PDF selezionato</p>
+        <p id="selection-count" class="selection-count" aria-live="polite">Nessun file selezionato</p>
         <button id="clear-selection" class="button button-quiet" type="button" disabled>Cancella selezione</button>
       </div>
       <p id="selection-empty" class="empty-selection">I nomi dei file selezionati appariranno qui. Non viene mostrato né inviato alcun percorso del computer.</p>
@@ -84,6 +84,10 @@
         <label class="operation-option">
           <input type="radio" name="operation" value="extract">
           <span>Estrai testo</span>
+        </label>
+        <label class="operation-option">
+          <input type="radio" name="operation" value="images-to-pdf">
+          <span>Immagini in PDF</span>
         </label>
       </fieldset>
 
@@ -180,12 +184,17 @@
         <p>Il testo trovato nel PDF verrà scaricato come file UTF-8 con estensione <code>.txt</code>.</p>
       </section>
 
+      <section class="settings-panel" data-panel="images-to-pdf" aria-labelledby="images-to-pdf-heading" hidden>
+        <h3 id="images-to-pdf-heading">Converti immagini in PDF</h3>
+        <p>Seleziona immagini JPG o PNG: verranno unite in un unico PDF multipagina, nell'ordine mostrato. Ogni immagine viene adattata proporzionalmente a una pagina A4, senza ritagli.</p>
+      </section>
+
       <div class="action-row">
         <div>
           <button id="run-operation" class="button button-primary" type="button">Dividi PDF</button>
           <p id="submit-help" class="field-help">Seleziona un solo PDF per questa operazione.</p>
         </div>
-        <p class="privacy-note"><span aria-hidden="true">▣</span> I documenti vengono elaborati in locale e rimossi al termine della richiesta.</p>
+        <p class="privacy-note"><span aria-hidden="true">▣</span> I documenti vengono elaborati sul server e rimossi al termine della richiesta.</p>
       </div>
     </section>
 
@@ -205,6 +214,6 @@
       </div>
     </section>
   </main>
-  <footer class="site-footer">PDF4Um · I tuoi file restano sul tuo computer.</footer>
+  <footer class="site-footer">PDF4Um · I file caricati vengono rimossi dal server al termine dell'elaborazione.</footer>
 </body>
 </html>

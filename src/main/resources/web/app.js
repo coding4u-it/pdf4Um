@@ -6,9 +6,13 @@
     merge: "Unisci PDF",
     rename: "Rinomina PDF",
     encrypt: "Proteggi PDF",
-    extract: "Estrai testo"
+    extract: "Estrai testo",
+    "images-to-pdf": "Converti in PDF"
   };
   const MAX_FILES = 32;
+  const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
+  const PDF_ACCEPT = ".pdf,application/pdf";
+  const IMAGE_ACCEPT = ".jpg,.jpeg,.png,image/jpeg,image/png";
 
   const state = {
     files: [],
@@ -19,6 +23,8 @@
 
   const elements = {
     picker: document.getElementById("file-picker"),
+    pickerTitle: document.getElementById("picker-title"),
+    pickerHelp: document.getElementById("picker-help"),
     selectedFiles: document.getElementById("selected-files"),
     selectionCount: document.getElementById("selection-count"),
     selectionEmpty: document.getElementById("selection-empty"),
@@ -64,9 +70,13 @@
   function addSelectedFiles() {
     const keys = new Set(state.files.map(fileKey));
     let excessFiles = 0;
+    let unsupportedFiles = 0;
+    const imageOperation = currentOperation() === "images-to-pdf";
     Array.from(elements.picker.files || []).forEach((file) => {
       if (!keys.has(fileKey(file))) {
-        if (state.files.length >= MAX_FILES) {
+        if (!isSupportedFile(file, imageOperation)) {
+          unsupportedFiles += 1;
+        } else if (state.files.length >= MAX_FILES) {
           excessFiles += 1;
         } else {
           state.files.push(file);
@@ -78,11 +88,25 @@
     clearResult();
     renderFiles();
     updateControls();
-    if (excessFiles > 0) {
+    if (excessFiles > 0 || unsupportedFiles > 0) {
       showResult();
       setResultState("error");
-      elements.resultError.textContent = "Puoi selezionare al massimo 32 PDF per operazione; gli altri file non sono stati aggiunti.";
+      const messages = [];
+      if (unsupportedFiles > 0) {
+        messages.push(imageOperation
+          ? "Sono supportate solo immagini JPG e PNG."
+          : "Per questa operazione seleziona solo file PDF.");
+      }
+      if (excessFiles > 0) messages.push("Puoi selezionare al massimo 32 file per operazione.");
+      elements.resultError.textContent = messages.join(" ");
     }
+  }
+
+  function isSupportedFile(file, imageOperation) {
+    const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    return imageOperation
+      ? IMAGE_EXTENSIONS.includes(extension)
+      : extension === ".pdf";
   }
 
   function clearSelectedFiles() {
@@ -102,11 +126,16 @@
     elements.selectedFiles.replaceChildren();
     elements.selectionEmpty.hidden = state.files.length > 0;
     elements.selectionHint.hidden = state.files.length < 2;
+    const imageOperation = currentOperation() === "images-to-pdf";
     elements.selectionCount.textContent = state.files.length === 0
-      ? "Nessun PDF selezionato"
-      : state.files.length === 1
-        ? "1 PDF selezionato"
-        : state.files.length + " PDF selezionati";
+      ? imageOperation ? "Nessuna immagine selezionata" : "Nessun PDF selezionato"
+      : state.files.length + (imageOperation
+        ? state.files.length === 1 ? " immagine selezionata" : " immagini selezionate"
+        : state.files.length === 1 ? " PDF selezionato" : " PDF selezionati");
+    elements.selectedFiles.setAttribute(
+      "aria-label",
+      imageOperation ? "Immagini selezionate, nell'ordine del PDF" : "PDF selezionati, nell'ordine di elaborazione"
+    );
     elements.clearSelection.disabled = state.files.length === 0 || state.busy;
 
     state.files.forEach((file, index) => {
@@ -186,6 +215,12 @@
   }
 
   function onOperationChange() {
+    const imageOperation = currentOperation() === "images-to-pdf";
+    if (state.files.some((file) => !isSupportedFile(file, imageOperation))) {
+      state.files = [];
+      elements.picker.value = "";
+      renderFiles();
+    }
     clearResult();
     updateControls();
   }
@@ -202,6 +237,12 @@
       panel.hidden = panel.dataset.panel !== operation;
     });
     elements.picker.disabled = state.busy;
+    const imageOperation = operation === "images-to-pdf";
+    elements.picker.accept = imageOperation ? IMAGE_ACCEPT : PDF_ACCEPT;
+    elements.pickerTitle.textContent = imageOperation ? "Scegli immagini" : "Scegli PDF";
+    elements.pickerHelp.textContent = imageOperation
+      ? "JPG o PNG · massimo 32 immagini e 100 MiB complessivi"
+      : "Massimo 32 PDF e 100 MiB complessivi per operazione";
     elements.operationRadios.forEach((radio) => { radio.disabled = state.busy; });
     document.querySelectorAll(".settings-panel input").forEach((input) => { input.disabled = state.busy; });
 
@@ -218,6 +259,9 @@
     elements.submitHelp.textContent = requirement.message;
     elements.clearSelection.disabled = state.files.length === 0 || state.busy;
     elements.selectionRequirement.textContent = selectionRequirement(operation);
+    elements.selectionHint.textContent = imageOperation
+      ? "L'ordine mostrato qui verrà mantenuto nelle pagine del PDF."
+      : "Per unire i PDF, usa i pulsanti su e giù per impostare l'ordine: il primo file determina il nome del risultato.";
     syncFieldErrors(operation);
   }
 
@@ -226,6 +270,9 @@
       return operation === "split"
         ? "Per dividere il documento, seleziona esattamente un PDF."
         : "Per estrarre il testo, seleziona esattamente un PDF.";
+    }
+    if (operation === "images-to-pdf") {
+      return "Seleziona da una a 32 immagini JPG o PNG da convertire.";
     }
     if (operation === "merge") return "Per unire i PDF, seleziona almeno due documenti e controlla il loro ordine.";
     if (operation === "rename") return "Per rinominare, seleziona uno o più PDF.";
@@ -285,6 +332,8 @@
       if (!elements.password.value) return { valid: false, message: "Inserisci una password per proteggere i PDF." };
     } else if (operation === "extract" && state.files.length !== 1) {
       return { valid: false, message: "Seleziona un solo PDF da cui estrarre il testo." };
+    } else if (operation === "images-to-pdf" && state.files.length < 1) {
+      return { valid: false, message: "Seleziona almeno un'immagine JPG o PNG da convertire." };
     }
     return { valid: true, message: operation === "merge"
       ? "I PDF saranno uniti nell'ordine mostrato nell'elenco."
@@ -360,7 +409,7 @@
     clearResult();
     showResult();
     setResultState("working");
-    elements.resultStatus.textContent = "Preparazione dei PDF per " + operationLabels[operation].toLocaleLowerCase("it-IT") + ".";
+    elements.resultStatus.textContent = "Preparazione dei file per " + operationLabels[operation].toLocaleLowerCase("it-IT") + ".";
     elements.resultError.textContent = "";
     elements.progress.hidden = false;
     state.busy = true;
@@ -392,7 +441,7 @@
     } catch (error) {
       setResultState("error");
       elements.resultStatus.textContent = "";
-      elements.resultError.textContent = "Impossibile raggiungere l'applicazione locale. Verifica che il server sia in esecuzione e riprova.";
+      elements.resultError.textContent = "Impossibile raggiungere l'applicazione. Verifica la connessione al server e riprova.";
     } finally {
       state.busy = false;
       elements.progress.hidden = true;
@@ -405,7 +454,9 @@
 
   function buildRequest(operation) {
     const formData = new FormData();
-    const fileField = operation === "split" || operation === "extract" ? "file" : "files";
+    const fileField = operation === "split" || operation === "extract"
+      ? "file"
+      : operation === "images-to-pdf" ? "images" : "files";
     state.files.forEach((file) => formData.append(fileField, file, file.name));
 
     if (operation === "split") {
@@ -468,13 +519,20 @@
         : message || "Controlla i file selezionati e le impostazioni, quindi riprova.";
       focusWhenReady(elements.picker);
     } else if (response.status === 413) {
-      elements.resultError.textContent = "La richiesta supera il limite di 100 MiB. Seleziona meno PDF o documenti più piccoli.";
+      elements.resultError.textContent = operation === "images-to-pdf" &&
+        message.toLowerCase().includes("pixel")
+        ? "Le immagini superano il limite di dimensioni supportato. Riduci la risoluzione o seleziona meno immagini."
+        : "La richiesta supera il limite di 100 MiB. Seleziona meno file o documenti più piccoli.";
     } else if (response.status === 415) {
-      elements.resultError.textContent = "Uno o più file non sono in formato PDF. Seleziona documenti PDF e riprova.";
+      elements.resultError.textContent = operation === "images-to-pdf"
+        ? "Seleziona solo immagini JPG o PNG."
+        : "Uno o più file non sono in formato PDF. Seleziona documenti PDF e riprova.";
     } else if (response.status === 422) {
-      elements.resultError.textContent = "Non è stato possibile leggere " +
-        (state.files.length === 1 ? "il PDF selezionato." : "uno dei PDF selezionati.") +
-        " Verifica che il documento sia valido e non protetto da un'altra password.";
+      elements.resultError.textContent = operation === "images-to-pdf"
+        ? "Una o più immagini non sono leggibili. Verifica che i file JPG o PNG siano validi."
+        : "Non è stato possibile leggere " +
+          (state.files.length === 1 ? "il PDF selezionato." : "uno dei PDF selezionati.") +
+          " Verifica che il documento sia valido e non protetto da un'altra password.";
     } else {
       elements.resultError.textContent = "Non è stato possibile completare l'operazione. Riprova.";
     }
@@ -499,6 +557,7 @@
     if (operation === "merge") return "documento_merged.pdf";
     if (operation === "rename") return "renamed-pdfs.zip";
     if (operation === "encrypt") return "encrypted-pdfs.zip";
+    if (operation === "images-to-pdf") return "immagini.pdf";
     return "testo-estratto.txt";
   }
 
