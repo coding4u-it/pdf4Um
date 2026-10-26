@@ -87,6 +87,10 @@ def create_app() -> Flask:
     def stylesheet():
         return _static_file("styles.css", "text/css; charset=utf-8")
 
+    @app.get("/logoinfo.png")
+    def logo():
+        return _static_file("logoinfo.png", "image/png")
+
     @app.route(
         "/api/<path:operation>",
         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],

@@ -1,11 +1,15 @@
 import io
 import json
+import tempfile
 import unittest
 import zipfile
+from pathlib import Path
+from unittest.mock import patch
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
+import app as pdf4um_app
 from app import create_app
 
 
@@ -74,6 +78,7 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"PDF", response.data)
         self.assertIn(b'href="/" aria-label="Pdf4Um - torna alla home del sito"', response.data)
+        self.assertIn(b'<img class="brand-logo" src="logoinfo.png" alt="Pdf4Um">', response.data)
         self.assertIn(b'class="home-link" href="/">', response.data)
         self.assertIn(b'href="styles.css"', response.data)
         self.assertIn(b'src="app.js"', response.data)
@@ -82,6 +87,16 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertEqual(javascript.status_code, 200)
         self.assertIn(b'fetch("api/"', javascript.data)
         self.assertEqual(self.get("/styles.css").status_code, 200)
+
+    def test_serves_uploaded_logo_from_web_assets_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            logo = Path(directory) / "logoinfo.png"
+            logo.write_bytes(b"\x89PNG\r\n\x1a\n")
+            with patch.object(pdf4um_app, "WEB_DIRECTORY", Path(directory)):
+                response = self.get("/logoinfo.png")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.mimetype, "image/png")
+            self.assertEqual(response.data, b"\x89PNG\r\n\x1a\n")
 
     def test_workbench_routes_work_when_mounted_under_wsgi_prefix(self):
         environ = {"SCRIPT_NAME": "/flask.wsgi"}
