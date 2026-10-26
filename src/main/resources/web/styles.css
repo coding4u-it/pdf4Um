@@ -414,46 +414,75 @@ h1 {
 
 .operation-choice {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
   margin: 0 0 23px;
-  padding: 5px;
-  background: #f3f6fa;
-  border-radius: 12px;
+  padding: 0;
+  border: 0;
 }
 
 .operation-option {
   position: relative;
   min-width: 0;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .operation-option input {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
+  cursor: pointer;
 }
 
-.operation-option span {
+.operation-content {
   display: grid;
-  min-height: 39px;
-  place-items: center;
-  padding: 5px;
+  min-height: 92px;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 10px 6px;
   color: var(--muted);
+  border: 1px solid var(--line);
   border-radius: 9px;
-  font-size: clamp(0.65rem, 1.2vw, 0.8rem);
+  background: var(--surface);
+  font-size: 0.78rem;
   font-weight: 650;
   text-align: center;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 
-.operation-option input:checked + span {
+.operation-icon {
+  width: 27px;
+  height: 27px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.operation-label {
+  line-height: 1.25;
+}
+
+.operation-option:hover .operation-content {
+  border-color: #a9bfeb;
   color: var(--blue-dark);
-  background: white;
-  box-shadow: 0 1px 5px rgba(24, 41, 70, 0.12);
 }
 
-.operation-option input:focus-visible + span {
+.operation-option input:checked + .operation-content {
+  color: var(--blue-dark);
+  border-color: #91aee7;
+  background: var(--blue-pale);
+  box-shadow: 0 2px 8px rgba(24, 41, 70, 0.1);
+}
+
+.operation-option input:focus-visible + .operation-content {
   outline: 3px solid #80a6ff;
   outline-offset: 2px;
 }
@@ -801,6 +830,10 @@ h1 {
     min-height: unset;
   }
 
+  .operation-choice {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .result-card {
     grid-column: auto;
   }
@@ -838,13 +871,13 @@ h1 {
   }
 
   .operation-choice {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4px;
-    padding: 3px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
   }
 
-  .operation-option span {
-    padding-inline: 4px;
+  .operation-content {
+    min-height: 78px;
+    gap: 6px;
     font-size: 0.72rem;
   }
 
