@@ -9,17 +9,24 @@
   <script src="app.js" defer></script>
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand-home" href="/" aria-label="Pdf4Um - torna alla home del sito">
-      <img class="brand-logo" src="logoinfo.png" alt="Pdf4Um">
-    </a>
+  <header class="brand-header">
+    <div class="brand-header-inner">
+      <a class="brand-home" href="/" aria-label="Torna alla home di In4matika">
+        <img class="brand-logo" src="/images/1024/28872054/logoinfo-d53gbeyfFc7SlZLMHTB4XQ.png" alt="In4matika">
+      </a>
+      <nav class="site-navigation" aria-label="Navigazione principale">
+        <a class="home-link" href="/">Home</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="site-header page-intro" aria-labelledby="page-title">
     <div>
       <p class="eyebrow">PDF4Um · strumenti per i tuoi documenti</p>
-      <h1>Lavora con i tuoi PDF</h1>
+      <h1 id="page-title">Lavora con i tuoi PDF</h1>
       <p class="local-note"><span class="local-dot" aria-hidden="true"></span>I PDF vengono elaborati temporaneamente; gli originali non vengono modificati</p>
     </div>
-    <a class="home-link" href="/">← Home</a>
-  </header>
+  </section>
 
   <main class="workbench">
     <section class="step-card selection-card" aria-labelledby="selection-heading">

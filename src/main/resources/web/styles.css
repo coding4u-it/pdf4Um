@@ -41,41 +41,64 @@ button {
   color: inherit;
 }
 
-.site-header,
 .workbench,
 .site-footer {
   width: min(1140px, calc(100% - 40px));
   margin-inline: auto;
 }
 
+.brand-header {
+  width: 100%;
+  background: rgba(222, 230, 234, 0.94);
+  border-bottom: 1px solid rgba(98, 125, 140, 0.2);
+}
+
+.brand-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(1140px, calc(100% - 40px));
+  min-height: 96px;
+  margin-inline: auto;
+}
+
 .site-header {
   display: flex;
   align-items: flex-start;
-  gap: 18px;
-  padding-block: 48px 30px;
+  padding-block: 34px 30px;
+}
+
+.page-intro {
+  width: min(1140px, calc(100% - 40px));
+  margin-inline: auto;
 }
 
 .brand-home {
-  flex: 0 0 54px;
-  border-radius: 17px;
+  display: inline-flex;
+  align-items: center;
   text-decoration: none;
 }
 
 .brand-logo {
   display: block;
-  width: 54px;
-  height: 54px;
+  width: min(240px, 48vw);
+  max-height: 80px;
   object-fit: contain;
+  object-position: left center;
+}
+
+.site-navigation {
+  display: flex;
+  align-items: center;
 }
 
 .home-link {
-  margin-left: auto;
-  padding: 8px 13px;
-  color: var(--blue);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-  font-size: 0.92rem;
+  padding: 10px 16px;
+  color: #344b59;
+  border: 1px solid rgba(71, 98, 113, 0.26);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 0.95rem;
   font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
@@ -83,7 +106,7 @@ button {
 
 .home-link:hover {
   color: var(--blue-dark);
-  background: var(--blue-pale);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .eyebrow {
@@ -750,14 +773,19 @@ h1 {
 }
 
 @media (max-width: 760px) {
-  .site-header,
+  .brand-header-inner,
+  .page-intro,
   .workbench,
   .site-footer {
     width: min(100% - 28px, 620px);
   }
 
-  .site-header {
-    padding-block: 30px 22px;
+  .brand-header-inner {
+    min-height: 82px;
+  }
+
+  .page-intro {
+    padding-block: 28px 22px;
   }
 
   .workbench {
@@ -779,28 +807,25 @@ h1 {
 }
 
 @media (max-width: 430px) {
-  .site-header,
+  .brand-header-inner,
+  .page-intro,
   .workbench,
   .site-footer {
     width: calc(100% - 22px);
   }
 
-  .site-header {
-    gap: 12px;
+  .brand-header-inner {
+    min-height: 72px;
   }
 
   .brand-logo {
-    width: 44px;
-    height: 44px;
-  }
-
-  .brand-home {
-    flex-basis: 44px;
+    width: min(190px, 56vw);
+    max-height: 64px;
   }
 
   .home-link {
-    padding: 7px 10px;
-    font-size: 0.84rem;
+    padding: 8px 12px;
+    font-size: 0.88rem;
   }
 
   .eyebrow {

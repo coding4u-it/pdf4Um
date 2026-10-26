@@ -50,6 +50,10 @@ def make_text_pdf(text: str) -> bytes:
 
 class PdfWorkbenchTest(unittest.TestCase):
     def setUp(self):
+        web_directory = Path(__file__).parents[1] / "src" / "main" / "resources" / "web"
+        self.web_directory_patcher = patch.object(pdf4um_app, "WEB_DIRECTORY", web_directory)
+        self.web_directory_patcher.start()
+        self.addCleanup(self.web_directory_patcher.stop)
         self.client = create_app().test_client()
         self.pdf = make_pdf()
 
@@ -77,9 +81,15 @@ class PdfWorkbenchTest(unittest.TestCase):
         response = self.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"PDF", response.data)
-        self.assertIn(b'href="/" aria-label="Pdf4Um - torna alla home del sito"', response.data)
-        self.assertIn(b'<img class="brand-logo" src="logoinfo.png" alt="Pdf4Um">', response.data)
-        self.assertIn(b'class="home-link" href="/">', response.data)
+        self.assertIn(b'href="/" aria-label="Torna alla home di In4matika"', response.data)
+        self.assertIn(
+            b'src="/images/1024/28872054/logoinfo-d53gbeyfFc7SlZLMHTB4XQ.png" alt="In4matika"',
+            response.data,
+        )
+        self.assertIn(b'class="home-link" href="/">Home</a>', response.data)
+        self.assertNotIn(b"Chi Siamo", response.data)
+        self.assertNotIn(b"Servizi", response.data)
+        self.assertNotIn(b"Contattaci", response.data)
         self.assertIn(b'href="styles.css"', response.data)
         self.assertIn(b'src="app.js"', response.data)
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
