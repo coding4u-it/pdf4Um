@@ -34,6 +34,11 @@ browser files (`index.html`, `app.js`, and `styles.css`) to the configured
 application root. Keep the browser files in either
 `src/main/resources/web/` or a separate `pdf4um-web/` subdirectory. The
 existing website's root `index.html` is independent and should not be replaced.
+If publishing the main site removes manually created directories, the frontend
+can instead be uploaded as flat files beside `app.py`, using the names
+`pdf4um-index.html`, `pdf4um-app.js`, and `pdf4um-styles.css` (optionally
+`pdf4um-logoinfo.png`). Flask serves these names on its existing workbench
+routes, leaving the website's own `index.html` untouched.
 If the browser files are in a different directory, set
 `PDF4UM_WEB_DIRECTORY` to that directory (absolute, or relative to `app.py`).
 Install the packages from `requirements.txt`, and configure the WSGI entry

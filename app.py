@@ -38,6 +38,12 @@ def _resolve_web_directory(app_directory: Path, configured_directory: str | None
 
 
 WEB_DIRECTORY = _resolve_web_directory(APP_DIRECTORY, CONFIGURED_WEB_DIRECTORY)
+ROOT_ASSET_NAMES = {
+    "index.html": "pdf4um-index.html",
+    "app.js": "pdf4um-app.js",
+    "styles.css": "pdf4um-styles.css",
+    "logoinfo.png": "pdf4um-logoinfo.png",
+}
 LOGGER = logging.getLogger(__name__)
 
 
@@ -116,13 +122,16 @@ def create_app() -> Flask:
 
 
 def _static_file(name: str, mimetype: str = "text/html; charset=utf-8"):
-    path = WEB_DIRECTORY / name
+    root_asset_name = ROOT_ASSET_NAMES.get(name)
+    root_asset = APP_DIRECTORY / root_asset_name if root_asset_name else None
+    path = root_asset if root_asset and root_asset.is_file() else WEB_DIRECTORY / name
     if not path.is_file():
         abort(
             503,
             description=(
-                "The browser workbench assets are missing. Provide index.html, app.js, "
-                "and styles.css in the PDF4UM_WEB_DIRECTORY folder."
+                "The browser workbench assets are missing. Provide the pdf4um-index.html, "
+                "pdf4um-app.js, and pdf4um-styles.css files beside app.py, or provide "
+                "index.html, app.js, and styles.css in PDF4UM_WEB_DIRECTORY."
             ),
         )
     return send_file(path, mimetype=mimetype, conditional=False)

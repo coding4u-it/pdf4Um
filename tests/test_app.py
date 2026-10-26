@@ -108,6 +108,28 @@ class PdfWorkbenchTest(unittest.TestCase):
             self.assertEqual(response.mimetype, "image/png")
             self.assertEqual(response.data, b"\x89PNG\r\n\x1a\n")
 
+    def test_serves_flat_named_assets_without_overwriting_site_homepage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app_directory = Path(directory)
+            (app_directory / "index.html").write_text("Main website")
+            (app_directory / "pdf4um-index.html").write_text("PDF workbench")
+            (app_directory / "pdf4um-app.js").write_text("workbench script")
+            (app_directory / "pdf4um-styles.css").write_text("workbench styles")
+            (app_directory / "pdf4um-logoinfo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+            with (
+                patch.object(pdf4um_app, "APP_DIRECTORY", app_directory),
+                patch.object(pdf4um_app, "WEB_DIRECTORY", app_directory / "removed-folder"),
+            ):
+                page = self.get("/")
+                javascript = self.get("/app.js")
+                stylesheet = self.get("/styles.css")
+                logo = self.get("/logoinfo.png")
+
+            self.assertEqual(page.data, b"PDF workbench")
+            self.assertEqual(javascript.data, b"workbench script")
+            self.assertEqual(stylesheet.data, b"workbench styles")
+            self.assertEqual(logo.data, b"\x89PNG\r\n\x1a\n")
+
     def test_prefers_deployed_web_assets_to_legacy_source_assets(self):
         with tempfile.TemporaryDirectory() as directory:
             app_directory = Path(directory)
