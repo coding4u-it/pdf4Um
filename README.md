@@ -28,25 +28,45 @@ python -m unittest discover -s tests
 
 ## Deploy on HeliHost
 
-Use the Python/Flask application option in the hosting control panel if it is
-available for your account. Upload `app.py`, `requirements.txt`, and the three
-browser files (`index.html`, `app.js`, and `styles.css`) to the configured
-application root. Keep the browser files in either
-`src/main/resources/web/` or a separate `pdf4um-web/` subdirectory. The
-existing website's root `index.html` is independent and should not be replaced.
-If publishing the main site removes manually created directories, the frontend
-can instead be uploaded as flat files beside `app.py`, using the names
-`pdf4um-index.html`, `pdf4um-app.js`, and `pdf4um-styles.css` (optionally
-`pdf4um-logoinfo.png`). Flask serves these names on its existing workbench
-routes, leaving the website's own `index.html` untouched.
-If the browser files are in a different directory, set
-`PDF4UM_WEB_DIRECTORY` to that directory (absolute, or relative to `app.py`).
-Install the packages from `requirements.txt`, and configure the WSGI entry
-point as `app:app` if the panel asks for a module and variable.
-Follow HeliHost's current instructions for selecting the Python version,
-application root, and startup/restart action; those settings are account- and
-panel-specific. Do not expose the project directory as a browsable document
-root: the Flask app serves only the workbench assets and API routes.
+To keep the main website publisher from removing Pdf4Um directories, keep the
+application outside `httpdocs` and leave only the WSGI entry point there:
+
+```text
+/home/in4matika.helioho.st/
+├── httpdocs/
+│   ├── index.html                 # Main website
+│   └── flask.wsgi                 # Copy from deploy/helihost/flask.wsgi
+└── pdf4um/
+    ├── app.py
+    ├── requirements.txt
+    ├── venv/                      # Created on the host
+    └── pdf4um-web/
+        ├── index.html
+        ├── app.js
+        ├── styles.css
+        └── logoinfo.png
+```
+
+The supplied WSGI file resolves `pdf4um/` as the sibling of `httpdocs/`,
+loads its virtualenv site-packages for the Python version running mod_wsgi,
+sets `PDF4UM_WEB_DIRECTORY`, and imports the Flask application. Keep the
+`/flask.wsgi/` mapping configured in HeliHost and restart the Python app after
+uploading files.
+
+Create the virtualenv on HeliHost using the exact Python version selected for
+the WSGI application, then install the requirements from the application
+directory. For example, if mod_wsgi uses Python 3.14:
+
+```sh
+cd /home/in4matika.helioho.st/pdf4um
+python3.14 -m venv venv
+venv/bin/python -m pip install -r requirements.txt
+```
+
+Upload the Python files from the repository root into `pdf4um/`, and copy the
+four browser assets from `src/main/resources/web/` into `pdf4um/pdf4um-web/`.
+Do not upload the local `.venv` from a development machine; create the
+virtualenv on the host.
 
 When the Flask application is mounted under a URL prefix such as
 `/flask.wsgi/`, open that URL with its trailing slash. The frontend uses
