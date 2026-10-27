@@ -606,10 +606,10 @@
           element: page,
           widthPx,
           heightPx,
-          pageCount: Math.max(1, Math.ceil(contentHeightPx / heightPx))
+          slices: docxPageSlices(page, heightPx, contentHeightPx)
         };
       });
-      const pageCount = renderedPages.reduce((count, page) => count + page.pageCount, 0);
+      const pageCount = renderedPages.reduce((count, page) => count + page.slices.length, 0);
       if (pageCount > MAX_DOCX_PAGES) {
         throw new Error("Il documento supera il limite di " + MAX_DOCX_PAGES + " pagine.");
       }
@@ -617,24 +617,25 @@
       let pdf = null;
       let outputPage = 0;
       for (const renderedPage of renderedPages) {
-        const { element, widthPx, heightPx, pageCount: sectionPageCount } = renderedPage;
+        const { element, widthPx, heightPx, slices } = renderedPage;
         const pageFormat = docxPageFormat(widthPx, heightPx);
         const [widthMm, heightMm] = pageFormat;
         const orientation = widthMm > heightMm ? "landscape" : "portrait";
 
-        for (let sectionPage = 0; sectionPage < sectionPageCount; sectionPage += 1) {
+        for (const slice of slices) {
           outputPage += 1;
           elements.resultStatus.textContent = "Conversione della pagina " +
             outputPage + " di " + pageCount + " nel browser.";
           const canvas = await window.html2canvas(element, {
             backgroundColor: "#ffffff",
-            height: heightPx,
+            height: slice.height,
             logging: false,
             scale: DOCX_CAPTURE_SCALE,
             useCORS: false,
             width: widthPx,
-            y: sectionPage * heightPx
+            y: slice.y
           });
+          const imageHeightMm = heightMm * slice.height / heightPx;
           if (!pdf) {
             pdf = new jsPDF({
               orientation,
@@ -645,7 +646,14 @@
           } else {
             pdf.addPage(pageFormat, orientation);
           }
-          pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, widthMm, heightMm);
+          pdf.addImage(
+            canvas.toDataURL("image/jpeg", 0.94),
+            "JPEG",
+            0,
+            0,
+            widthMm,
+            imageHeightMm
+          );
           canvas.width = 0;
           canvas.height = 0;
           await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -655,6 +663,43 @@
     } finally {
       stage.remove();
     }
+  }
+
+  function docxPageSlices(page, pageHeightPx, contentHeightPx) {
+    const pageTop = page.getBoundingClientRect().top;
+    const breakpoints = [];
+    const textWalker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
+    let textNode;
+    while ((textNode = textWalker.nextNode())) {
+      if (!textNode.textContent.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(textNode);
+      for (const rect of range.getClientRects()) {
+        if (rect.height > 0) breakpoints.push(rect.bottom - pageTop + 1);
+      }
+    }
+
+    for (const element of page.querySelectorAll("img, svg, canvas, table, tr, td, th, hr")) {
+      const rect = element.getBoundingClientRect();
+      if (rect.height > 0) breakpoints.push(rect.bottom - pageTop + 1);
+    }
+
+    breakpoints.sort((left, right) => left - right);
+    const slices = [];
+    let start = 0;
+    while (contentHeightPx - start > pageHeightPx) {
+      const limit = start + pageHeightPx;
+      let end = null;
+      for (const breakpoint of breakpoints) {
+        if (breakpoint > limit) break;
+        if (breakpoint > start + 1) end = breakpoint;
+      }
+      if (end === null) end = limit;
+      slices.push({ y: start, height: end - start });
+      start = end;
+    }
+    slices.push({ y: start, height: contentHeightPx - start });
+    return slices;
   }
 
   function docxPageFormat(widthPx, heightPx) {
