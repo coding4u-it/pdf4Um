@@ -154,6 +154,7 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertIn(b'value="docx-to-pdf-browser"', response.data)
         self.assertIn(b"Converti DOCX in PDF nel browser", response.data)
         self.assertIn(b"il DOCX non viene caricato sul server", response.data)
+        self.assertIn(b"mantiene il formato impostato nel DOCX (A4 incluso)", response.data)
         self.assertIn(b"docx-preview@0.3.6", response.data)
         self.assertIn(b"html2canvas@1.4.1", response.data)
         self.assertIn(b"jspdf@2.5.2", response.data)

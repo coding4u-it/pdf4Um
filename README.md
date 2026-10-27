@@ -5,8 +5,9 @@ to PDF, splitting, merging, renaming, protecting, and extracting text from PDF
 files. DOCX documents are rendered in the browser and converted to image-based
 PDF pages on the user's device; the source document is not uploaded to the
 server. This uses pinned libraries loaded from unpkg and respects page breaks
-stored in the DOCX, but its rendering may differ from Microsoft Word. ODT
-conversion uses ReportLab on the server and preserves text, headings,
+stored in the DOCX. Each rendered page becomes one PDF page using the document's
+page dimensions (including standard A4 pages); rendering may still differ from
+Microsoft Word. ODT conversion uses ReportLab on the server and preserves text, headings,
 paragraphs, lists, and basic tables; page layout and advanced formatting may
 differ from the source. Neither conversion requires LibreOffice. The browser
 interface is served by a Python Flask backend, which processes server-side

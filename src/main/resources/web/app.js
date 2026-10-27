@@ -15,6 +15,9 @@
   const MAX_DOCX_BYTES = 50 * 1024 * 1024;
   const MAX_DOCX_PAGES = 50;
   const DOCX_CAPTURE_SCALE = 1.5;
+  const CSS_PIXELS_TO_MM = 25.4 / 96;
+  const A4_TOLERANCE_MM = 1;
+  const A4_PORTRAIT = [210, 297];
   const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
   const ODT_EXTENSIONS = [".odt"];
   const DOCX_EXTENSIONS = [".docx"];
@@ -595,16 +598,15 @@
           throw new Error("Una pagina del documento non ha dimensioni valide.");
         }
 
+        const pageFormat = docxPageFormat(bounds.width, bounds.height);
+        const [widthMm, heightMm] = pageFormat;
+        const orientation = widthMm > heightMm ? "landscape" : "portrait";
         const canvas = await window.html2canvas(page, {
           backgroundColor: "#ffffff",
           logging: false,
           scale: DOCX_CAPTURE_SCALE,
           useCORS: false
         });
-        const widthMm = canvas.width / DOCX_CAPTURE_SCALE * 25.4 / 96;
-        const heightMm = canvas.height / DOCX_CAPTURE_SCALE * 25.4 / 96;
-        const orientation = widthMm > heightMm ? "landscape" : "portrait";
-        const pageFormat = [widthMm, heightMm];
         if (!pdf) {
           pdf = new jsPDF({
             orientation,
@@ -624,6 +626,19 @@
     } finally {
       stage.remove();
     }
+  }
+
+  function docxPageFormat(widthPx, heightPx) {
+    const widthMm = widthPx * CSS_PIXELS_TO_MM;
+    const heightMm = heightPx * CSS_PIXELS_TO_MM;
+    const portrait = widthMm <= heightMm;
+    const expectedWidth = portrait ? A4_PORTRAIT[0] : A4_PORTRAIT[1];
+    const expectedHeight = portrait ? A4_PORTRAIT[1] : A4_PORTRAIT[0];
+    if (Math.abs(widthMm - expectedWidth) <= A4_TOLERANCE_MM &&
+        Math.abs(heightMm - expectedHeight) <= A4_TOLERANCE_MM) {
+      return [expectedWidth, expectedHeight];
+    }
+    return [widthMm, heightMm];
   }
 
   function buildRequest(operation) {
