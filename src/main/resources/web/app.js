@@ -8,14 +8,20 @@
     encrypt: "Proteggi PDF",
     extract: "Estrai testo",
     "images-to-pdf": "Converti in PDF",
-    "documents-to-pdf": "Converti DOCX / ODT in PDF"
+    "documents-to-pdf": "Converti ODT in PDF",
+    "docx-to-pdf-browser": "Converti DOCX in PDF"
   };
   const MAX_FILES = 32;
+  const MAX_DOCX_BYTES = 50 * 1024 * 1024;
+  const MAX_DOCX_PAGES = 50;
+  const DOCX_CAPTURE_SCALE = 1.5;
   const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
-  const DOCUMENT_EXTENSIONS = [".docx", ".odt"];
+  const ODT_EXTENSIONS = [".odt"];
+  const DOCX_EXTENSIONS = [".docx"];
   const PDF_ACCEPT = ".pdf,application/pdf";
   const IMAGE_ACCEPT = ".jpg,.jpeg,.png,image/jpeg,image/png";
-  const DOCUMENT_ACCEPT = ".docx,.odt,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.oasis.opendocument.text";
+  const ODT_ACCEPT = ".odt,application/vnd.oasis.opendocument.text";
+  const DOCX_ACCEPT = ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
   const state = {
     files: [],
@@ -46,6 +52,7 @@
     password: document.getElementById("password"),
     runButton: document.getElementById("run-operation"),
     submitHelp: document.getElementById("submit-help"),
+    privacyNote: document.getElementById("privacy-note-text"),
     resultSection: document.getElementById("result-section"),
     resultIcon: document.getElementById("result-icon"),
     resultStatus: document.getElementById("result-status"),
@@ -75,12 +82,15 @@
     let excessFiles = 0;
     let unsupportedFiles = 0;
     const imageOperation = currentOperation() === "images-to-pdf";
-    const documentOperation = currentOperation() === "documents-to-pdf";
+    const documentOperation = isDocumentOperation(currentOperation());
+    const documentLimit = documentOperation ? 1 : MAX_FILES;
     Array.from(elements.picker.files || []).forEach((file) => {
       if (!keys.has(fileKey(file))) {
-        if (!isSupportedFile(file, imageOperation, documentOperation)) {
+        if (!isSupportedFile(file, imageOperation, currentOperation())) {
           unsupportedFiles += 1;
-        } else if (state.files.length >= MAX_FILES) {
+        } else if (state.files.length >= documentLimit) {
+          excessFiles += 1;
+        } else if (currentOperation() === "docx-to-pdf-browser" && file.size > MAX_DOCX_BYTES) {
           excessFiles += 1;
         } else {
           state.files.push(file);
@@ -99,19 +109,32 @@
       if (unsupportedFiles > 0) {
         messages.push(imageOperation
           ? "Sono supportate solo immagini JPG e PNG."
-          : documentOperation
-            ? "Sono supportati solo documenti DOCX e ODT."
+          : currentOperation() === "docx-to-pdf-browser"
+            ? "Con questa operazione puoi selezionare solo un file DOCX."
+            : documentOperation
+              ? "È supportato un solo documento ODT."
             : "Per questa operazione seleziona solo file PDF.");
       }
-      if (excessFiles > 0) messages.push("Puoi selezionare al massimo 32 file per operazione.");
+      if (excessFiles > 0) {
+        messages.push(currentOperation() === "docx-to-pdf-browser"
+          ? "Seleziona un solo DOCX, non più grande di 50 MiB."
+          : documentOperation
+            ? "Seleziona un solo documento ODT."
+            : "Puoi selezionare al massimo 32 file per operazione.");
+      }
       elements.resultError.textContent = messages.join(" ");
     }
   }
 
-  function isSupportedFile(file, imageOperation, documentOperation) {
+  function isDocumentOperation(operation) {
+    return operation === "documents-to-pdf" || operation === "docx-to-pdf-browser";
+  }
+
+  function isSupportedFile(file, imageOperation, operation) {
     const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
     if (imageOperation) return IMAGE_EXTENSIONS.includes(extension);
-    if (documentOperation) return DOCUMENT_EXTENSIONS.includes(extension);
+    if (operation === "documents-to-pdf") return ODT_EXTENSIONS.includes(extension);
+    if (operation === "docx-to-pdf-browser") return DOCX_EXTENSIONS.includes(extension);
     return extension === ".pdf";
   }
 
@@ -133,7 +156,7 @@
     elements.selectionEmpty.hidden = state.files.length > 0;
     elements.selectionHint.hidden = state.files.length < 2;
     const imageOperation = currentOperation() === "images-to-pdf";
-    const documentOperation = currentOperation() === "documents-to-pdf";
+    const documentOperation = isDocumentOperation(currentOperation());
     elements.selectionCount.textContent = state.files.length === 0
       ? imageOperation ? "Nessuna immagine selezionata" : documentOperation ? "Nessun documento selezionato" : "Nessun PDF selezionato"
       : state.files.length + (imageOperation
@@ -225,8 +248,9 @@
   }
 
   function onOperationChange() {
-    const imageOperation = currentOperation() === "images-to-pdf";
-    if (state.files.some((file) => !isSupportedFile(file, imageOperation))) {
+    const operation = currentOperation();
+    const imageOperation = operation === "images-to-pdf";
+    if (state.files.some((file) => !isSupportedFile(file, imageOperation, operation))) {
       state.files = [];
       elements.picker.value = "";
       renderFiles();
@@ -248,12 +272,19 @@
     });
     elements.picker.disabled = state.busy;
     const imageOperation = operation === "images-to-pdf";
-    const documentOperation = operation === "documents-to-pdf";
-    elements.picker.accept = imageOperation ? IMAGE_ACCEPT : documentOperation ? DOCUMENT_ACCEPT : PDF_ACCEPT;
-    elements.pickerTitle.textContent = imageOperation ? "Scegli immagini" : documentOperation ? "Scegli DOCX o ODT" : "Scegli PDF";
+    const documentOperation = isDocumentOperation(operation);
+    elements.picker.accept = imageOperation
+      ? IMAGE_ACCEPT
+      : operation === "docx-to-pdf-browser" ? DOCX_ACCEPT
+        : operation === "documents-to-pdf" ? ODT_ACCEPT : PDF_ACCEPT;
+    elements.pickerTitle.textContent = imageOperation
+      ? "Scegli immagini"
+      : operation === "docx-to-pdf-browser" ? "Scegli DOCX"
+        : operation === "documents-to-pdf" ? "Scegli ODT" : "Scegli PDF";
     elements.pickerHelp.textContent = imageOperation
       ? "JPG o PNG · massimo 32 immagini e 100 MiB complessivi"
-      : documentOperation ? "Un file DOCX o ODT · massimo 100 MiB"
+      : operation === "docx-to-pdf-browser" ? "Un file DOCX · massimo 50 MiB · conversione nel browser"
+        : operation === "documents-to-pdf" ? "Un file ODT · massimo 100 MiB"
         : "Massimo 32 PDF e 100 MiB complessivi per operazione";
     elements.operationRadios.forEach((radio) => { radio.disabled = state.busy; });
     document.querySelectorAll(".settings-panel input").forEach((input) => { input.disabled = state.busy; });
@@ -273,9 +304,14 @@
     elements.selectionRequirement.textContent = selectionRequirement(operation);
     elements.selectionHint.textContent = imageOperation
       ? "L'ordine mostrato qui verrà mantenuto nelle pagine del PDF."
-      : documentOperation
+      : operation === "docx-to-pdf-browser"
+        ? "Il DOCX viene convertito interamente nel browser e non viene inviato al server."
+        : documentOperation
         ? "Per questa operazione puoi selezionare un solo documento."
         : "Per unire i PDF, usa i pulsanti su e giù per impostare l'ordine: il primo file determina il nome del risultato.";
+    elements.privacyNote.textContent = operation === "docx-to-pdf-browser"
+      ? "Il DOCX e il PDF restano sul tuo dispositivo; il file non viene inviato al server."
+      : "I documenti vengono elaborati sul server e rimossi al termine della richiesta.";
     syncFieldErrors(operation);
   }
 
@@ -289,7 +325,10 @@
       return "Seleziona da una a 32 immagini JPG o PNG da convertire.";
     }
     if (operation === "documents-to-pdf") {
-      return "Per convertire il documento, seleziona un solo file DOCX o ODT.";
+      return "Per convertire il documento, seleziona un solo file ODT.";
+    }
+    if (operation === "docx-to-pdf-browser") {
+      return "Seleziona un solo DOCX fino a 50 MiB; la conversione avviene nel browser.";
     }
     if (operation === "merge") return "Per unire i PDF, seleziona almeno due documenti e controlla il loro ordine.";
     if (operation === "rename") return "Per rinominare, seleziona uno o più PDF.";
@@ -327,16 +366,22 @@
 
   function getRequirement(operation) {
     const imageOperation = operation === "images-to-pdf";
-    const documentOperation = operation === "documents-to-pdf";
-    if (state.files.some((file) => !isSupportedFile(file, imageOperation, documentOperation))) {
+    if (state.files.some((file) => !isSupportedFile(file, imageOperation, operation))) {
       return {
         valid: false,
         message: imageOperation
           ? "Seleziona solo immagini JPG o PNG."
-          : documentOperation
-            ? "Seleziona solo file DOCX o ODT."
+          : operation === "docx-to-pdf-browser"
+            ? "Seleziona solo un file DOCX."
+            : operation === "documents-to-pdf"
+              ? "Seleziona solo un file ODT."
             : "Seleziona solo file PDF."
       };
+    }
+
+    if (operation === "docx-to-pdf-browser" &&
+        state.files.some((file) => file.size > MAX_DOCX_BYTES)) {
+      return { valid: false, message: "Il file DOCX deve essere più piccolo di 50 MiB." };
     }
 
     if (operation === "split") {
@@ -365,7 +410,9 @@
     } else if (operation === "images-to-pdf" && state.files.length < 1) {
       return { valid: false, message: "Seleziona almeno un'immagine JPG o PNG da convertire." };
     } else if (operation === "documents-to-pdf" && state.files.length !== 1) {
-      return { valid: false, message: "Seleziona un solo documento DOCX o ODT da convertire." };
+      return { valid: false, message: "Seleziona un solo documento ODT da convertire." };
+    } else if (operation === "docx-to-pdf-browser" && state.files.length !== 1) {
+      return { valid: false, message: "Seleziona un solo documento DOCX da convertire." };
     }
     return { valid: true, message: operation === "merge"
       ? "I PDF saranno uniti nell'ordine mostrato nell'elenco."
@@ -437,11 +484,14 @@
     if (!requirement.valid) return;
     if (!validateBeforeSubmit(operation)) return;
 
-    const formData = buildRequest(operation);
+    const browserDocxOperation = operation === "docx-to-pdf-browser";
+    const formData = browserDocxOperation ? null : buildRequest(operation);
     clearResult();
     showResult();
     setResultState("working");
-    elements.resultStatus.textContent = "Preparazione dei file per " + operationLabels[operation].toLocaleLowerCase("it-IT") + ".";
+    elements.resultStatus.textContent = browserDocxOperation
+      ? "Render del documento e creazione del PDF nel browser."
+      : "Preparazione dei file per " + operationLabels[operation].toLocaleLowerCase("it-IT") + ".";
     elements.resultError.textContent = "";
     elements.progress.hidden = false;
     state.busy = true;
@@ -449,17 +499,24 @@
     renderFiles();
 
     try {
-      const response = await fetch("api/" + (operation === "extract" ? "extract-text" : operation), {
-        method: "POST",
-        body: formData
-      });
-      if (!response.ok) {
-        await handleFailure(response, operation);
-        return;
+      let blob;
+      let filename;
+      if (browserDocxOperation) {
+        blob = await renderDocxToPdf(state.files[0]);
+        filename = state.files[0].name.replace(/\.docx$/i, ".pdf");
+      } else {
+        const response = await fetch("api/" + (operation === "extract" ? "extract-text" : operation), {
+          method: "POST",
+          body: formData
+        });
+        if (!response.ok) {
+          await handleFailure(response, operation);
+          return;
+        }
+        blob = await response.blob();
+        filename = responseFilename(response.headers.get("Content-Disposition")) || defaultFilename(operation);
       }
 
-      const blob = await response.blob();
-      const filename = responseFilename(response.headers.get("Content-Disposition")) || defaultFilename(operation);
       state.downloadUrl = URL.createObjectURL(blob);
       elements.downloadLink.href = state.downloadUrl;
       elements.downloadLink.download = filename;
@@ -471,9 +528,19 @@
       elements.downloadLink.click();
       if (operation === "encrypt") elements.password.value = "";
     } catch (error) {
+      if (browserDocxOperation) console.error("Browser DOCX conversion failed.", error);
       setResultState("error");
       elements.resultStatus.textContent = "";
-      elements.resultError.textContent = "Impossibile raggiungere l'applicazione. Verifica la connessione al server e riprova.";
+      elements.resultError.textContent = browserDocxOperation
+        ? error instanceof Error && (
+          error.message.startsWith("Librerie di conversione") ||
+          error.message.startsWith("Il documento supera il limite") ||
+          error.message.startsWith("Il documento non contiene") ||
+          error.message.startsWith("Una pagina del documento")
+        )
+          ? error.message
+          : "Il browser non è riuscito a renderizzare questo DOCX. Prova con un documento più semplice o aggiornato in Word."
+        : "Impossibile raggiungere l'applicazione. Verifica la connessione al server e riprova.";
     } finally {
       state.busy = false;
       elements.progress.hidden = true;
@@ -481,6 +548,81 @@
       renderFiles();
       if (state.pendingFocus && !state.pendingFocus.disabled) state.pendingFocus.focus();
       state.pendingFocus = null;
+    }
+  }
+
+  async function renderDocxToPdf(file) {
+    if (!window.docx || typeof window.docx.renderAsync !== "function" ||
+        typeof window.html2canvas !== "function" || !window.jspdf || !window.jspdf.jsPDF) {
+      throw new Error("Librerie di conversione non disponibili. Verifica la connessione e ricarica la pagina.");
+    }
+
+    const stage = document.createElement("div");
+    stage.className = "docx-render-stage";
+    stage.setAttribute("aria-hidden", "true");
+    stage.style.position = "fixed";
+    stage.style.left = "-100000px";
+    stage.style.top = "0";
+    stage.style.zIndex = "-1";
+    document.body.append(stage);
+
+    try {
+      await window.docx.renderAsync(file, stage, stage, {
+        breakPages: true,
+        ignoreLastRenderedPageBreak: false,
+        renderHeaders: true,
+        renderFooters: true,
+        useBase64URL: true
+      });
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+
+      const pages = Array.from(stage.querySelectorAll("section.docx"));
+      if (pages.length === 0) {
+        throw new Error("Il documento non contiene pagine renderizzabili.");
+      }
+      if (pages.length > MAX_DOCX_PAGES) {
+        throw new Error("Il documento supera il limite di " + MAX_DOCX_PAGES + " pagine.");
+      }
+
+      const { jsPDF } = window.jspdf;
+      let pdf = null;
+      for (let index = 0; index < pages.length; index += 1) {
+        elements.resultStatus.textContent = "Conversione della pagina " +
+          (index + 1) + " di " + pages.length + " nel browser.";
+        const page = pages[index];
+        const bounds = page.getBoundingClientRect();
+        if (bounds.width <= 0 || bounds.height <= 0) {
+          throw new Error("Una pagina del documento non ha dimensioni valide.");
+        }
+
+        const canvas = await window.html2canvas(page, {
+          backgroundColor: "#ffffff",
+          logging: false,
+          scale: DOCX_CAPTURE_SCALE,
+          useCORS: false
+        });
+        const widthMm = canvas.width / DOCX_CAPTURE_SCALE * 25.4 / 96;
+        const heightMm = canvas.height / DOCX_CAPTURE_SCALE * 25.4 / 96;
+        const orientation = widthMm > heightMm ? "landscape" : "portrait";
+        const pageFormat = [widthMm, heightMm];
+        if (!pdf) {
+          pdf = new jsPDF({
+            orientation,
+            unit: "mm",
+            format: pageFormat,
+            compress: true
+          });
+        } else {
+          pdf.addPage(pageFormat, orientation);
+        }
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, widthMm, heightMm);
+        canvas.width = 0;
+        canvas.height = 0;
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+      return pdf.output("blob");
+    } finally {
+      stage.remove();
     }
   }
 

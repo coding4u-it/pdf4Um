@@ -6,6 +6,10 @@
   <meta name="theme-color" content="#f4f6fa">
   <title>PDF4Um — strumenti PDF</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous" defer></script>
+  <script src="https://unpkg.com/docx-preview@0.3.6/dist/docx-preview.min.js" integrity="sha384-kKPxR3hMxt6X0EM6PYDjS3F8X1XaTZE4HfBd4Fv6CRcS+KuEy/P0itqZAIkg7JCR" crossorigin="anonymous" defer></script>
+  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous" defer></script>
+  <script src="https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -111,7 +115,14 @@
           <input type="radio" name="operation" value="documents-to-pdf">
           <span class="operation-content">
             <svg class="operation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3.75h8l4 4v12.5H6z"/><path d="M14 3.75v4h4M9 12h6M9 15h6M9 18h4"/></svg>
-            <span class="operation-label">DOCX / ODT in PDF</span>
+            <span class="operation-label">ODT in PDF</span>
+          </span>
+        </label>
+        <label class="operation-option">
+          <input type="radio" name="operation" value="docx-to-pdf-browser">
+          <span class="operation-content">
+            <svg class="operation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3.75h8l4 4v12.5H6z"/><path d="M14 3.75v4h4M9 12h6M9 15h6M9 18h4"/></svg>
+            <span class="operation-label">DOCX in PDF</span>
           </span>
         </label>
       </fieldset>
@@ -215,8 +226,13 @@
       </section>
 
       <section class="settings-panel" data-panel="documents-to-pdf" aria-labelledby="documents-to-pdf-heading" hidden>
-        <h3 id="documents-to-pdf-heading">Converti DOCX o ODT in PDF</h3>
-        <p>Seleziona un documento DOCX o ODT. La conversione non richiede LibreOffice e mantiene testo, titoli, paragrafi, elenchi e tabelle; l'impaginazione e la formattazione avanzata possono differire dall'originale.</p>
+        <h3 id="documents-to-pdf-heading">Converti ODT in PDF</h3>
+        <p>Seleziona un documento ODT. La conversione mantiene testo, titoli, paragrafi, elenchi e tabelle semplici; l'impaginazione e la formattazione avanzata possono differire dall'originale.</p>
+      </section>
+
+      <section class="settings-panel" data-panel="docx-to-pdf-browser" aria-labelledby="docx-to-pdf-heading" hidden>
+        <h3 id="docx-to-pdf-heading">Converti DOCX in PDF nel browser</h3>
+        <p>Il documento viene renderizzato nel browser e il PDF viene creato sul tuo dispositivo: il DOCX non viene caricato sul server. L'aspetto dipende dal browser e può differire da Microsoft Word; sono rispettate le interruzioni pagina presenti nel documento. La prima conversione carica le librerie da un CDN.</p>
       </section>
 
       <div class="action-row">
@@ -224,7 +240,7 @@
           <button id="run-operation" class="button button-primary" type="button">Dividi PDF</button>
           <p id="submit-help" class="field-help">Seleziona un solo PDF per questa operazione.</p>
         </div>
-        <p class="privacy-note"><span aria-hidden="true">▣</span> I documenti vengono elaborati sul server e rimossi al termine della richiesta.</p>
+        <p class="privacy-note"><span aria-hidden="true">▣</span> <span id="privacy-note-text">I documenti vengono elaborati sul server e rimossi al termine della richiesta.</span></p>
       </div>
     </section>
 
