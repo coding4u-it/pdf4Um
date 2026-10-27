@@ -569,10 +569,6 @@
         : "Non è stato possibile leggere " +
           (state.files.length === 1 ? "il PDF selezionato." : "uno dei PDF selezionati.") +
           " Verifica che il documento sia valido e non protetto da un'altra password.";
-    } else if (operation === "documents-to-pdf" && response.status === 503) {
-      elements.resultError.textContent = "La conversione DOCX/ODT non è disponibile sul server: è necessario installare o configurare LibreOffice.";
-    } else if (operation === "documents-to-pdf" && response.status === 504) {
-      elements.resultError.textContent = "La conversione ha superato il tempo massimo. Prova con un documento più semplice o più piccolo.";
     } else {
       elements.resultError.textContent = "Non è stato possibile completare l'operazione. Riprova.";
     }

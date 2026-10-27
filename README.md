@@ -2,11 +2,10 @@
 
 Pdf4Um is a web workbench for converting JPG/PNG images and DOCX/ODT documents
 to PDF, splitting, merging, renaming, protecting, and extracting text from PDF
-files. DOCX/ODT conversion uses LibreOffice in headless mode; install LibreOffice
-on the server and ensure `libreoffice` or `soffice` is available on `PATH`.
-Alternatively, set `LIBREOFFICE_BIN` to its executable path. Each conversion
-uses a temporary isolated LibreOffice profile and has a 60-second timeout. The
-browser interface is served by a Python Flask backend, which processes uploads in a
+files. DOCX/ODT conversion uses ReportLab and does not require LibreOffice or
+other system programs. It preserves text, headings, paragraphs, lists, and basic
+tables; page layout, images, and advanced formatting may differ from the source.
+The browser interface is served by a Python Flask backend, which processes uploads in a
 temporary workspace and returns the result as a download. Image conversion
 creates one A4 page per image in the selected order. Original files are not
 modified. Requests are limited to 100 MiB and operations accept up to 32 files.
@@ -19,7 +18,6 @@ Requires Python 3.10 or later.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-sudo apt install libreoffice
 python app.py
 ```
 
@@ -65,10 +63,6 @@ cd /home/in4matika.helioho.st/pdf4um
 python3.14 -m venv venv
 venv/bin/python -m pip install -r requirements.txt
 ```
-
-The hosting plan must also provide LibreOffice (`libreoffice` or `soffice`) for
-DOCX/ODT conversion. If it is not on `PATH`, set `LIBREOFFICE_BIN` to the
-executable path in the WSGI environment.
 
 Upload the repository into `pdf4um/` with the `src/main/resources/web/` folder
 intact. Alternatively, copy `index.html`, `app.js`, and `styles.css` into

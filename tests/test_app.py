@@ -55,6 +55,57 @@ def make_image(format_name: str, color: str, size: tuple[int, int] = (120, 80)) 
     return output.getvalue()
 
 
+def make_docx() -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            '''<?xml version="1.0" encoding="UTF-8"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:body>
+                <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Titolo documento</w:t></w:r></w:p>
+                <w:p><w:r><w:t>Testo di prova</w:t></w:r></w:p>
+                <w:tbl><w:tr>
+                  <w:tc><w:p><w:r><w:t>Prima colonna</w:t></w:r></w:p></w:tc>
+                  <w:tc><w:p><w:r><w:t>Seconda colonna</w:t></w:r></w:p></w:tc>
+                </w:tr></w:tbl>
+                <w:sectPr/>
+              </w:body>
+            </w:document>''',
+        )
+    return output.getvalue()
+
+
+def make_odt() -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr(
+            "mimetype",
+            "application/vnd.oasis.opendocument.text",
+            compress_type=zipfile.ZIP_STORED,
+        )
+        archive.writestr(
+            "content.xml",
+            '''<?xml version="1.0" encoding="UTF-8"?>
+            <office:document-content
+              xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+              xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+              xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+              office:version="1.2">
+              <office:body><office:text>
+                <text:h text:outline-level="1">Titolo documento</text:h>
+                <text:p>Testo <text:span>di prova</text:span></text:p>
+                <text:list><text:list-item><text:p>Elemento elenco</text:p></text:list-item></text:list>
+                <table:table><table:table-row>
+                  <table:table-cell><text:p>Prima colonna</text:p></table:table-cell>
+                  <table:table-cell><text:p>Seconda colonna</text:p></table:table-cell>
+                </table:table-row></table:table>
+              </office:text></office:body>
+            </office:document-content>''',
+        )
+    return output.getvalue()
+
+
 class PdfWorkbenchTest(unittest.TestCase):
     def setUp(self):
         web_directory = Path(__file__).parents[1] / "src" / "main" / "resources" / "web"
@@ -244,59 +295,41 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertEqual(unreadable.status_code, 422)
 
     def test_converts_docx_and_odt_documents_to_pdf(self):
-        for filename in ("Report.docx", "Report.odt"):
+        for filename, content in (
+            ("Report.docx", make_docx()),
+            ("Report.odt", make_odt()),
+        ):
             with self.subTest(filename=filename):
-                def convert(command, **_kwargs):
-                    output_directory = Path(command[command.index("--outdir") + 1])
-                    source = Path(command[-1])
-                    (output_directory / f"{source.stem}.pdf").write_bytes(self.pdf)
-                    return pdf4um_app.subprocess.CompletedProcess(command, 0, "", "")
-
-                with (
-                    patch.object(pdf4um_app.shutil, "which", return_value="/usr/bin/libreoffice"),
-                    patch.object(pdf4um_app.subprocess, "run", side_effect=convert) as run,
-                ):
-                    response = self.post(
-                        "/api/documents-to-pdf",
-                        {"file": self.upload(filename, b"office document")},
-                    )
+                response = self.post(
+                    "/api/documents-to-pdf",
+                    {"file": self.upload(filename, content)},
+                )
 
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.mimetype, "application/pdf")
                 self.assertIn("Report.pdf", response.headers["Content-Disposition"])
-                self.assertEqual(len(PdfReader(io.BytesIO(response.data)).pages), 1)
-                command = run.call_args.args[0]
-                self.assertIn("--headless", command)
-                self.assertIn("--convert-to", command)
-                self.assertEqual(command[command.index("--convert-to") + 1], "pdf")
+                reader = PdfReader(io.BytesIO(response.data))
+                self.assertGreaterEqual(len(reader.pages), 1)
+                extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+                self.assertIn("Titolo documento", extracted_text)
+                self.assertIn("Testo di prova", extracted_text)
+                self.assertIn("Prima colonna", extracted_text)
+                self.assertIn("Seconda colonna", extracted_text)
+                if filename.endswith(".odt"):
+                    self.assertIn("Elemento elenco", extracted_text)
 
-    def test_document_conversion_reports_invalid_type_missing_converter_and_timeout(self):
+    def test_document_conversion_rejects_unsupported_and_invalid_files(self):
         unsupported = self.post(
             "/api/documents-to-pdf",
             {"file": self.upload("report.pdf", self.pdf)},
         )
         self.assertEqual(unsupported.status_code, 415)
 
-        with patch.object(pdf4um_app.shutil, "which", return_value=None):
-            unavailable = self.post(
-                "/api/documents-to-pdf",
-                {"file": self.upload("report.docx", b"office document")},
-            )
-        self.assertEqual(unavailable.status_code, 503)
-
-        with (
-            patch.object(pdf4um_app.shutil, "which", return_value="/usr/bin/libreoffice"),
-            patch.object(
-                pdf4um_app.subprocess,
-                "run",
-                side_effect=pdf4um_app.subprocess.TimeoutExpired("libreoffice", 60),
-            ),
-        ):
-            timed_out = self.post(
-                "/api/documents-to-pdf",
-                {"file": self.upload("report.odt", b"office document")},
-            )
-        self.assertEqual(timed_out.status_code, 504)
+        invalid = self.post(
+            "/api/documents-to-pdf",
+            {"file": self.upload("report.docx", b"not a DOCX archive")},
+        )
+        self.assertEqual(invalid.status_code, 422)
 
     def test_rename_sequential_and_random(self):
         sequential = self.post(

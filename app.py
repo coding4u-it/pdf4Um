@@ -4,11 +4,12 @@ import os
 import re
 import secrets
 import shutil
-import subprocess
 import tempfile
 import zipfile
 import warnings
+import xml.etree.ElementTree as ET
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from flask import Flask, Response, abort, jsonify, request, send_file
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -16,6 +17,11 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.constants import UserAccessPermissions
 from pypdf.errors import PdfReadError
 from pypdf import Transformation
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
 
@@ -23,11 +29,16 @@ MAX_REQUEST_BYTES = 100 * 1024 * 1024
 MAX_FILES = 32
 MAX_IMAGE_PIXELS = 40_000_000
 MAX_TOTAL_IMAGE_PIXELS = 100_000_000
-DOCUMENT_CONVERSION_TIMEOUT = 60
+MAX_DOCUMENT_XML_BYTES = 20 * 1024 * 1024
+MAX_DOCUMENT_ARCHIVE_ENTRIES = 10_000
 A4_WIDTH = 595.275590551
 A4_HEIGHT = 841.88976378
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 SUPPORTED_DOCUMENT_SUFFIXES = {".docx", ".odt"}
+DOCX_NAMESPACE = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+ODT_TEXT_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
+ODT_TABLE_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:table:1.0}"
+ODT_OFFICE_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:office:1.0}"
 RANDOM_ALPHABET = "[]()abcdefghijklmnopqrstuvwxyz#.&0123456789$£€,ABCDEFGHIJKLMNOPQRSTUVWXYZ@"
 APP_DIRECTORY = Path(__file__).resolve().parent
 SOURCE_WEB_DIRECTORY = APP_DIRECTORY / "src" / "main" / "resources" / "web"
@@ -354,57 +365,224 @@ def _save_document_upload(directory: Path) -> Path:
 
 
 def _document_to_pdf(source: Path, workspace: Path) -> Path:
-    configured_binary = os.environ.get("LIBREOFFICE_BIN")
-    binary = configured_binary or shutil.which("libreoffice") or shutil.which("soffice")
-    if not binary:
-        raise ApiProblem(503, "LibreOffice is required to convert DOCX and ODT files.")
-
-    output_directory = workspace / "converted"
-    profile_directory = workspace / "libreoffice-profile"
-    output_directory.mkdir()
-    profile_directory.mkdir()
-    output = output_directory / f"{source.stem}.pdf"
-
+    output = workspace / f"{source.stem}.pdf"
     try:
-        result = subprocess.run(
-            [
-                binary,
-                "--headless",
-                "--nologo",
-                "--nodefault",
-                "--nolockcheck",
-                f"-env:UserInstallation={profile_directory.as_uri()}",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(output_directory),
-                str(source),
-            ],
-            cwd=workspace,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=DOCUMENT_CONVERSION_TIMEOUT,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as error:
-        LOGGER.warning("LibreOffice document conversion exceeded its time limit.")
-        raise ApiProblem(504, "Document conversion timed out.") from error
-    except OSError as error:
-        LOGGER.exception("Unable to start LibreOffice for document conversion.")
-        raise ApiProblem(503, "LibreOffice could not be started.") from error
-
-    if result.returncode != 0 or not output.is_file():
-        LOGGER.warning("LibreOffice document conversion failed (exit code %s).", result.returncode)
-        raise ApiProblem(422, "The DOCX or ODT document could not be converted.")
-
-    try:
+        blocks = _document_blocks(source)
+        if not any(_block_has_content(block) for block in blocks):
+            raise ValueError("The document has no supported text content.")
+        _write_document_pdf(blocks, output)
         reader = PdfReader(output, strict=False)
         if reader.is_encrypted or not reader.pages:
             raise PdfReadError("Converted PDF is encrypted or empty.")
-    except (OSError, PdfReadError, ValueError) as error:
+    except ApiProblem:
+        raise
+    except (OSError, zipfile.BadZipFile, ET.ParseError, PdfReadError, ValueError) as error:
+        LOGGER.info("Document conversion failed for %s.", source.suffix)
         raise ApiProblem(422, "The DOCX or ODT document could not be converted.") from error
     return output
+
+
+def _document_blocks(source: Path) -> list[tuple[str, object]]:
+    with zipfile.ZipFile(source) as archive:
+        entries = archive.infolist()
+        if len(entries) > MAX_DOCUMENT_ARCHIVE_ENTRIES:
+            raise ValueError("The document archive contains too many entries.")
+        members = {entry.filename: entry for entry in entries}
+        document_name = "word/document.xml" if source.suffix.lower() == ".docx" else "content.xml"
+        document_info = members.get(document_name)
+        if document_info is None or document_info.file_size > MAX_DOCUMENT_XML_BYTES:
+            raise ValueError("The document XML is missing or too large.")
+        document = _parse_document_xml(archive.read(document_name))
+        if source.suffix.lower() == ".docx":
+            body = document.find(f".//{DOCX_NAMESPACE}body")
+            if body is None:
+                raise ValueError("The DOCX body is missing.")
+            return _docx_blocks(body)
+
+        body = document.find(f".//{ODT_OFFICE_NAMESPACE}body/{ODT_OFFICE_NAMESPACE}text")
+        if body is None:
+            raise ValueError("The ODT body is missing.")
+        return _odt_blocks(body)
+
+
+def _parse_document_xml(content: bytes) -> ET.Element:
+    if b"<!DOCTYPE" in content.upper() or b"<!ENTITY" in content.upper():
+        raise ValueError("Document XML declarations are not supported.")
+    return ET.fromstring(content)
+
+
+def _docx_blocks(body: ET.Element) -> list[tuple[str, object]]:
+    blocks = []
+    for element in body:
+        if element.tag == f"{DOCX_NAMESPACE}p":
+            properties = element.find(f"{DOCX_NAMESPACE}pPr")
+            style = properties.find(f"{DOCX_NAMESPACE}pStyle") if properties is not None else None
+            style_name = style.get(f"{DOCX_NAMESPACE}val", "").lower() if style is not None else ""
+            kind = "heading" if style_name.startswith(("heading", "title", "subtitle")) else "paragraph"
+            prefix = ""
+            if properties is not None and properties.find(f"{DOCX_NAMESPACE}numPr") is not None:
+                prefix = "• "
+            blocks.append((kind, escape(prefix) + _docx_inline(element)))
+        elif element.tag == f"{DOCX_NAMESPACE}tbl":
+            rows = []
+            for row in element.findall(f"{DOCX_NAMESPACE}tr"):
+                cells = []
+                for cell in row.findall(f"{DOCX_NAMESPACE}tc"):
+                    paragraphs = [
+                        _docx_inline(paragraph)
+                        for paragraph in cell.findall(f"{DOCX_NAMESPACE}p")
+                    ]
+                    cells.append("<br/>".join(paragraphs))
+                if cells:
+                    rows.append(cells)
+            if rows:
+                blocks.append(("table", rows))
+    return blocks
+
+
+def _docx_inline(paragraph: ET.Element) -> str:
+    parts = []
+    for run in paragraph.iter(f"{DOCX_NAMESPACE}r"):
+        properties = run.find(f"{DOCX_NAMESPACE}rPr")
+        bold = properties is not None and properties.find(f"{DOCX_NAMESPACE}b") is not None
+        italic = properties is not None and properties.find(f"{DOCX_NAMESPACE}i") is not None
+        value = []
+        for element in run.iter():
+            if element.tag == f"{DOCX_NAMESPACE}t" and element.text:
+                value.append(escape(element.text))
+            elif element.tag == f"{DOCX_NAMESPACE}tab":
+                value.append("&#160;&#160;&#160;&#160;")
+            elif element.tag == f"{DOCX_NAMESPACE}br":
+                value.append("<br/>")
+        text = "".join(value)
+        if bold:
+            text = f"<b>{text}</b>"
+        if italic:
+            text = f"<i>{text}</i>"
+        parts.append(text)
+    return "".join(parts)
+
+
+def _odt_blocks(body: ET.Element, in_list: bool = False) -> list[tuple[str, object]]:
+    blocks = []
+    for element in body:
+        if element.tag in {f"{ODT_TEXT_NAMESPACE}p", f"{ODT_TEXT_NAMESPACE}h"}:
+            kind = "heading" if element.tag == f"{ODT_TEXT_NAMESPACE}h" else "paragraph"
+            prefix = "• " if in_list and kind == "paragraph" else ""
+            blocks.append((kind, escape(prefix) + _odt_inline(element)))
+        elif element.tag == f"{ODT_TABLE_NAMESPACE}table":
+            rows = []
+            for row in element.iter(f"{ODT_TABLE_NAMESPACE}table-row"):
+                cells = []
+                for cell in row:
+                    if cell.tag not in {
+                        f"{ODT_TABLE_NAMESPACE}table-cell",
+                        f"{ODT_TABLE_NAMESPACE}covered-table-cell",
+                    }:
+                        continue
+                    paragraphs = [
+                        _odt_inline(paragraph)
+                        for paragraph in cell
+                        if paragraph.tag in {
+                            f"{ODT_TEXT_NAMESPACE}p",
+                            f"{ODT_TEXT_NAMESPACE}h",
+                        }
+                    ]
+                    cells.append("<br/>".join(paragraphs))
+                if cells:
+                    rows.append(cells)
+            if rows:
+                blocks.append(("table", rows))
+        elif element.tag in {
+            f"{ODT_TEXT_NAMESPACE}list",
+            f"{ODT_TEXT_NAMESPACE}list-item",
+        }:
+            blocks.extend(_odt_blocks(element, in_list=True))
+    return blocks
+
+
+def _odt_inline(element: ET.Element) -> str:
+    def render(node: ET.Element) -> str:
+        if node.tag == f"{ODT_TEXT_NAMESPACE}s":
+            count = min(int(node.get(f"{ODT_TEXT_NAMESPACE}c", "1")), 100)
+            return "&#160;" * count
+        if node.tag == f"{ODT_TEXT_NAMESPACE}tab":
+            return "&#160;&#160;&#160;&#160;"
+        if node.tag == f"{ODT_TEXT_NAMESPACE}line-break":
+            return "<br/>"
+
+        parts = [escape(node.text or "")]
+        for child in node:
+            parts.append(render(child))
+            parts.append(escape(child.tail or ""))
+        return "".join(parts)
+
+    return render(element)
+
+
+def _block_has_content(block: tuple[str, object]) -> bool:
+    kind, content = block
+    if kind == "table":
+        return any(cell.strip() for row in content for cell in row)
+    return bool(content.strip())
+
+
+def _write_document_pdf(blocks: list[tuple[str, object]], output: Path) -> None:
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(
+        name="DocumentBody",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        alignment=TA_LEFT,
+        spaceAfter=8,
+    ))
+    styles.add(ParagraphStyle(
+        name="DocumentHeading",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        leading=18,
+        spaceBefore=8,
+        spaceAfter=8,
+    ))
+
+    content = []
+    for kind, value in blocks:
+        if kind == "table":
+            rows = [
+                [Paragraph(cell or " ", styles["DocumentBody"]) for cell in row]
+                for row in value
+            ]
+            table = Table(rows, repeatRows=1, hAlign="LEFT")
+            table.setStyle(TableStyle([
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            content.extend((table, Spacer(1, 8)))
+        else:
+            text = str(value) or " "
+            content.append(Paragraph(
+                text,
+                styles["DocumentHeading" if kind == "heading" else "DocumentBody"],
+            ))
+
+    document = SimpleDocTemplate(
+        str(output),
+        pagesize=A4,
+        rightMargin=50,
+        leftMargin=50,
+        topMargin=50,
+        bottomMargin=50,
+        title=output.stem,
+    )
+    document.build(content)
 
 
 def _images_to_pdf(images: list[Path], output: Path) -> None:
