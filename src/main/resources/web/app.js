@@ -588,39 +588,68 @@
       }
 
       const { jsPDF } = window.jspdf;
-      let pdf = null;
-      for (let index = 0; index < pages.length; index += 1) {
-        elements.resultStatus.textContent = "Conversione della pagina " +
-          (index + 1) + " di " + pages.length + " nel browser.";
-        const page = pages[index];
+      const renderedPages = pages.map((page) => {
         const bounds = page.getBoundingClientRect();
-        if (bounds.width <= 0 || bounds.height <= 0) {
+        const computedStyle = window.getComputedStyle(page);
+        const widthPx = bounds.width;
+        const heightPx = Number.parseFloat(computedStyle.minHeight) || bounds.height;
+        if (widthPx <= 0 || heightPx <= 0) {
           throw new Error("Una pagina del documento non ha dimensioni valide.");
         }
 
-        const pageFormat = docxPageFormat(bounds.width, bounds.height);
+        page.style.minHeight = "0";
+        page.style.height = "auto";
+        page.style.maxHeight = "none";
+        page.style.overflow = "visible";
+        const contentHeightPx = Math.max(page.scrollHeight, page.getBoundingClientRect().height);
+        return {
+          element: page,
+          widthPx,
+          heightPx,
+          pageCount: Math.max(1, Math.ceil(contentHeightPx / heightPx))
+        };
+      });
+      const pageCount = renderedPages.reduce((count, page) => count + page.pageCount, 0);
+      if (pageCount > MAX_DOCX_PAGES) {
+        throw new Error("Il documento supera il limite di " + MAX_DOCX_PAGES + " pagine.");
+      }
+
+      let pdf = null;
+      let outputPage = 0;
+      for (const renderedPage of renderedPages) {
+        const { element, widthPx, heightPx, pageCount: sectionPageCount } = renderedPage;
+        const pageFormat = docxPageFormat(widthPx, heightPx);
         const [widthMm, heightMm] = pageFormat;
         const orientation = widthMm > heightMm ? "landscape" : "portrait";
-        const canvas = await window.html2canvas(page, {
-          backgroundColor: "#ffffff",
-          logging: false,
-          scale: DOCX_CAPTURE_SCALE,
-          useCORS: false
-        });
-        if (!pdf) {
-          pdf = new jsPDF({
-            orientation,
-            unit: "mm",
-            format: pageFormat,
-            compress: true
+
+        for (let sectionPage = 0; sectionPage < sectionPageCount; sectionPage += 1) {
+          outputPage += 1;
+          elements.resultStatus.textContent = "Conversione della pagina " +
+            outputPage + " di " + pageCount + " nel browser.";
+          const canvas = await window.html2canvas(element, {
+            backgroundColor: "#ffffff",
+            height: heightPx,
+            logging: false,
+            scale: DOCX_CAPTURE_SCALE,
+            useCORS: false,
+            width: widthPx,
+            y: sectionPage * heightPx
           });
-        } else {
-          pdf.addPage(pageFormat, orientation);
+          if (!pdf) {
+            pdf = new jsPDF({
+              orientation,
+              unit: "mm",
+              format: pageFormat,
+              compress: true
+            });
+          } else {
+            pdf.addPage(pageFormat, orientation);
+          }
+          pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, widthMm, heightMm);
+          canvas.width = 0;
+          canvas.height = 0;
+          await new Promise((resolve) => requestAnimationFrame(resolve));
         }
-        pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, widthMm, heightMm);
-        canvas.width = 0;
-        canvas.height = 0;
-        await new Promise((resolve) => requestAnimationFrame(resolve));
       }
       return pdf.output("blob");
     } finally {
