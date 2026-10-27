@@ -99,6 +99,8 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertNotIn(b"Contattaci", response.data)
         self.assertIn(b'value="images-to-pdf"', response.data)
         self.assertIn(b"Converti immagini in PDF", response.data)
+        self.assertIn(b'value="documents-to-pdf"', response.data)
+        self.assertIn(b"Converti DOCX o ODT in PDF", response.data)
         self.assertIn(b'href="styles.css"', response.data)
         self.assertIn(b'src="app.js"', response.data)
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
@@ -240,6 +242,61 @@ class PdfWorkbenchTest(unittest.TestCase):
             {"images": self.upload("broken.png", b"not a PNG")},
         )
         self.assertEqual(unreadable.status_code, 422)
+
+    def test_converts_docx_and_odt_documents_to_pdf(self):
+        for filename in ("Report.docx", "Report.odt"):
+            with self.subTest(filename=filename):
+                def convert(command, **_kwargs):
+                    output_directory = Path(command[command.index("--outdir") + 1])
+                    source = Path(command[-1])
+                    (output_directory / f"{source.stem}.pdf").write_bytes(self.pdf)
+                    return pdf4um_app.subprocess.CompletedProcess(command, 0, "", "")
+
+                with (
+                    patch.object(pdf4um_app.shutil, "which", return_value="/usr/bin/libreoffice"),
+                    patch.object(pdf4um_app.subprocess, "run", side_effect=convert) as run,
+                ):
+                    response = self.post(
+                        "/api/documents-to-pdf",
+                        {"file": self.upload(filename, b"office document")},
+                    )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.mimetype, "application/pdf")
+                self.assertIn("Report.pdf", response.headers["Content-Disposition"])
+                self.assertEqual(len(PdfReader(io.BytesIO(response.data)).pages), 1)
+                command = run.call_args.args[0]
+                self.assertIn("--headless", command)
+                self.assertIn("--convert-to", command)
+                self.assertEqual(command[command.index("--convert-to") + 1], "pdf")
+
+    def test_document_conversion_reports_invalid_type_missing_converter_and_timeout(self):
+        unsupported = self.post(
+            "/api/documents-to-pdf",
+            {"file": self.upload("report.pdf", self.pdf)},
+        )
+        self.assertEqual(unsupported.status_code, 415)
+
+        with patch.object(pdf4um_app.shutil, "which", return_value=None):
+            unavailable = self.post(
+                "/api/documents-to-pdf",
+                {"file": self.upload("report.docx", b"office document")},
+            )
+        self.assertEqual(unavailable.status_code, 503)
+
+        with (
+            patch.object(pdf4um_app.shutil, "which", return_value="/usr/bin/libreoffice"),
+            patch.object(
+                pdf4um_app.subprocess,
+                "run",
+                side_effect=pdf4um_app.subprocess.TimeoutExpired("libreoffice", 60),
+            ),
+        ):
+            timed_out = self.post(
+                "/api/documents-to-pdf",
+                {"file": self.upload("report.odt", b"office document")},
+            )
+        self.assertEqual(timed_out.status_code, 504)
 
     def test_rename_sequential_and_random(self):
         sequential = self.post(

@@ -4,6 +4,7 @@ import os
 import re
 import secrets
 import shutil
+import subprocess
 import tempfile
 import zipfile
 import warnings
@@ -22,9 +23,11 @@ MAX_REQUEST_BYTES = 100 * 1024 * 1024
 MAX_FILES = 32
 MAX_IMAGE_PIXELS = 40_000_000
 MAX_TOTAL_IMAGE_PIXELS = 100_000_000
+DOCUMENT_CONVERSION_TIMEOUT = 60
 A4_WIDTH = 595.275590551
 A4_HEIGHT = 841.88976378
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
+SUPPORTED_DOCUMENT_SUFFIXES = {".docx", ".odt"}
 RANDOM_ALPHABET = "[]()abcdefghijklmnopqrstuvwxyz#.&0123456789$£€,ABCDEFGHIJKLMNOPQRSTUVWXYZ@"
 APP_DIRECTORY = Path(__file__).resolve().parent
 SOURCE_WEB_DIRECTORY = APP_DIRECTORY / "src" / "main" / "resources" / "web"
@@ -114,7 +117,8 @@ def create_app() -> Flask:
     )
     def api(operation: str):
         if operation not in {
-            "split", "merge", "rename", "encrypt", "extract-text", "images-to-pdf"
+            "split", "merge", "rename", "encrypt", "extract-text", "images-to-pdf",
+            "documents-to-pdf",
         }:
             abort(404)
         if request.method != "POST":
@@ -264,6 +268,11 @@ def _run_operation(operation: str, workspace: Path) -> Response:
         _images_to_pdf(uploads, output)
         return _file_response(output, workspace, "application/pdf")
 
+    if operation == "documents-to-pdf":
+        upload = _save_document_upload(input_directory)
+        output = _document_to_pdf(upload, workspace)
+        return _file_response(output, workspace, "application/pdf")
+
     uploads = _save_uploads("file", 1, 1, input_directory)
     reader = _readable_pdfs(uploads)[0]
     output = workspace / f"{uploads[0].stem}_text.txt"
@@ -323,6 +332,79 @@ def _save_image_uploads(directory: Path) -> list[Path]:
         part.save(destination)
         files.append(destination)
     return files
+
+
+def _save_document_upload(directory: Path) -> Path:
+    parts = request.files.getlist("file")
+    if len(parts) != 1 or not parts[0].filename or not parts[0].filename.strip():
+        raise ApiProblem(400, "Select exactly one DOCX or ODT file.")
+
+    supplied_name = parts[0].filename.replace("\\", "/").rsplit("/", 1)[-1]
+    suffix = Path(supplied_name).suffix.lower()
+    if suffix not in SUPPORTED_DOCUMENT_SUFFIXES:
+        raise ApiProblem(415, "Only DOCX and ODT documents are supported.")
+
+    base = re.sub(r'[<>:"/\\|?*]', "_", supplied_name[:-len(Path(supplied_name).suffix)])
+    base = "".join(char for char in base if ord(char) >= 32 and ord(char) != 127).strip()
+    if not base or base in {".", ".."}:
+        base = "document"
+    destination = directory / f"{base}{suffix}"
+    parts[0].save(destination)
+    return destination
+
+
+def _document_to_pdf(source: Path, workspace: Path) -> Path:
+    configured_binary = os.environ.get("LIBREOFFICE_BIN")
+    binary = configured_binary or shutil.which("libreoffice") or shutil.which("soffice")
+    if not binary:
+        raise ApiProblem(503, "LibreOffice is required to convert DOCX and ODT files.")
+
+    output_directory = workspace / "converted"
+    profile_directory = workspace / "libreoffice-profile"
+    output_directory.mkdir()
+    profile_directory.mkdir()
+    output = output_directory / f"{source.stem}.pdf"
+
+    try:
+        result = subprocess.run(
+            [
+                binary,
+                "--headless",
+                "--nologo",
+                "--nodefault",
+                "--nolockcheck",
+                f"-env:UserInstallation={profile_directory.as_uri()}",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                str(output_directory),
+                str(source),
+            ],
+            cwd=workspace,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=DOCUMENT_CONVERSION_TIMEOUT,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        LOGGER.warning("LibreOffice document conversion exceeded its time limit.")
+        raise ApiProblem(504, "Document conversion timed out.") from error
+    except OSError as error:
+        LOGGER.exception("Unable to start LibreOffice for document conversion.")
+        raise ApiProblem(503, "LibreOffice could not be started.") from error
+
+    if result.returncode != 0 or not output.is_file():
+        LOGGER.warning("LibreOffice document conversion failed (exit code %s).", result.returncode)
+        raise ApiProblem(422, "The DOCX or ODT document could not be converted.")
+
+    try:
+        reader = PdfReader(output, strict=False)
+        if reader.is_encrypted or not reader.pages:
+            raise PdfReadError("Converted PDF is encrypted or empty.")
+    except (OSError, PdfReadError, ValueError) as error:
+        raise ApiProblem(422, "The DOCX or ODT document could not be converted.") from error
+    return output
 
 
 def _images_to_pdf(images: list[Path], output: Path) -> None:
