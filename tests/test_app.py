@@ -6,11 +6,12 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+import app as pdf4um_app
 from PIL import Image
+from docx.shared import Pt, RGBColor
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-import app as pdf4um_app
 from app import create_app
 
 
@@ -336,6 +337,65 @@ class PdfWorkbenchTest(unittest.TestCase):
                 self.assertIn("Seconda colonna", extracted_text)
                 if filename.endswith(".odt"):
                     self.assertIn("Elemento elenco", extracted_text)
+
+    def test_docx_conversion_preserves_run_font_sizes_and_emphasis(self):
+        document = pdf4um_app.Document()
+        title = document.add_paragraph()
+        title_run = title.add_run("Titolo personalizzato")
+        title_run.font.size = Pt(28)
+        title_run.bold = True
+        title_run.font.name = "Arial"
+        title_run.font.color.rgb = RGBColor(0x12, 0x34, 0x56)
+        body = document.add_paragraph()
+        body_run = body.add_run("Testo personalizzato")
+        body_run.font.size = Pt(9)
+        body_run.italic = True
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            workspace = Path(temporary_directory)
+            source = workspace / "styles.docx"
+            document.save(source)
+            html, css = pdf4um_app._docx_to_html(source)
+            output = pdf4um_app._document_to_pdf(source, workspace)
+
+            page = PdfReader(output).pages[0]
+            styled_runs = {}
+
+            def record_run(text, _cm, _tm, font, font_size):
+                if text.strip():
+                    styled_runs[text.strip()] = (font_size, str(font.get("/BaseFont")))
+
+            page.extract_text(visitor_text=record_run)
+
+        self.assertIn('font-family: "Helvetica"', css)
+        self.assertIn("font-size: 28pt", css)
+        self.assertIn("color: #123456", css)
+        self.assertAlmostEqual(styled_runs["Titolo personalizzato"][0], 28)
+        self.assertIn("Bold", styled_runs["Titolo personalizzato"][1])
+        self.assertAlmostEqual(styled_runs["Testo personalizzato"][0], 9)
+        self.assertIn("Oblique", styled_runs["Testo personalizzato"][1])
+
+    def test_docx_conversion_preserves_heading_style(self):
+        document = pdf4um_app.Document()
+        heading = document.add_heading("Heading style preserved", level=1)
+        heading.style.font.size = Pt(26)
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            workspace = Path(temporary_directory)
+            source = workspace / "heading.docx"
+            document.save(source)
+            html, css = pdf4um_app._docx_to_html(source)
+            output = pdf4um_app._document_to_pdf(source, workspace)
+
+            text_runs = []
+            PdfReader(output).pages[0].extract_text(
+                visitor_text=lambda text, _cm, _tm, _font, size:
+                    text_runs.append((text, size)) if text.strip() else None
+            )
+
+        self.assertIn('<h1 class="pdf4um-paragraph-0"', html)
+        self.assertIn("font-size: 26pt", css)
+        self.assertTrue(any("Heading style preserved" in text and size == 26 for text, size in text_runs))
 
     def test_odt_conversion_preserves_numbered_lists_and_grouped_table_rows(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
