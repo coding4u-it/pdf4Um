@@ -499,6 +499,17 @@ def _extract_odt_styles(root: ET.Element) -> dict:
     return styles
 
 
+def _extract_odt_list_styles(root: ET.Element) -> dict[str, str]:
+    list_styles = {}
+    for style in root.findall(f".//{ODT_TEXT_NAMESPACE}list-style"):
+        name = style.get(f"{ODT_STYLE_NAMESPACE}name")
+        if not name:
+            continue
+        level = style.find(f"{ODT_TEXT_NAMESPACE}list-level-style-number")
+        list_styles[name] = "ol" if level is not None else "ul"
+    return list_styles
+
+
 def _odt_to_html(source: Path) -> tuple[str, str]:
     page_css = _odt_page_css(source)
     with zipfile.ZipFile(source) as archive:
@@ -511,16 +522,24 @@ def _odt_to_html(source: Path) -> tuple[str, str]:
 
         text_styles = _extract_odt_styles(styles_root)
         text_styles.update(_extract_odt_styles(root))
+        list_styles = _extract_odt_list_styles(styles_root)
+        list_styles.update(_extract_odt_list_styles(root))
 
         body = root.find(f".//{ODT_OFFICE_NAMESPACE}body/{ODT_OFFICE_NAMESPACE}text")
         if body is None:
             raise ValueError("The ODT body is missing.")
 
-        html = _odt_blocks_to_html(body, archive, text_styles)
+        html = _odt_blocks_to_html(body, archive, text_styles, list_styles)
     return html, page_css
 
 
-def _odt_blocks_to_html(element: ET.Element, archive: zipfile.ZipFile, text_styles: dict) -> str:
+def _odt_blocks_to_html(
+    element: ET.Element,
+    archive: zipfile.ZipFile,
+    text_styles: dict,
+    list_styles: dict[str, str],
+    inherited_list_style: str | None = None,
+) -> str:
     html = []
     for child in element:
         if child.tag in {f"{ODT_TEXT_NAMESPACE}p", f"{ODT_TEXT_NAMESPACE}h"}:
@@ -529,25 +548,46 @@ def _odt_blocks_to_html(element: ET.Element, archive: zipfile.ZipFile, text_styl
             html.append(f"<{tag}>{inline_html}</{tag}>")
 
         elif child.tag == f"{ODT_TEXT_NAMESPACE}list":
-            html.append("<ul>")
-            for item in child.findall(f"{ODT_TEXT_NAMESPACE}list-item"):
-                html.append("<li>")
-                html.append(_odt_blocks_to_html(item, archive, text_styles))
-                html.append("</li>")
-            html.append("</ul>")
+            style_name = child.get(f"{ODT_TEXT_NAMESPACE}style-name", inherited_list_style)
+            list_tag = list_styles.get(style_name, "ul")
+            html.append(f"<{list_tag}>")
+            for item in child:
+                if item.tag in {f"{ODT_TEXT_NAMESPACE}list-item", f"{ODT_TEXT_NAMESPACE}list-header"}:
+                    html.append("<li>")
+                    html.append(_odt_blocks_to_html(item, archive, text_styles, list_styles, style_name))
+                    html.append("</li>")
+            html.append(f"</{list_tag}>")
 
         elif child.tag == f"{ODT_TABLE_NAMESPACE}table":
             html.append("<table>")
-            for row in child.findall(f"{ODT_TABLE_NAMESPACE}table-row"):
+            for row in _odt_table_rows(child):
                 html.append("<tr>")
                 for cell in row:
                     if cell.tag in {f"{ODT_TABLE_NAMESPACE}table-cell", f"{ODT_TABLE_NAMESPACE}covered-table-cell"}:
                         html.append("<td>")
-                        html.append(_odt_blocks_to_html(cell, archive, text_styles))
+                        html.append(_odt_blocks_to_html(cell, archive, text_styles, list_styles))
                         html.append("</td>")
                 html.append("</tr>")
             html.append("</table>")
     return "".join(html)
+
+
+def _odt_table_rows(table: ET.Element):
+    row_tags = {
+        f"{ODT_TABLE_NAMESPACE}table-row",
+        f"{ODT_TABLE_NAMESPACE}table-header-rows",
+        f"{ODT_TABLE_NAMESPACE}table-row-group",
+        f"{ODT_TABLE_NAMESPACE}table-rows",
+    }
+
+    def rows(container: ET.Element):
+        for child in container:
+            if child.tag == f"{ODT_TABLE_NAMESPACE}table-row":
+                yield child
+            elif child.tag in row_tags:
+                yield from rows(child)
+
+    yield from rows(table)
 
 
 def _odt_inline_to_html(element: ET.Element, archive: zipfile.ZipFile, text_styles: dict) -> str:

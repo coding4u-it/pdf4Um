@@ -91,17 +91,40 @@ def make_odt() -> bytes:
               xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
               xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
               xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+              xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
               office:version="1.2">
               <office:body><office:text>
                 <text:h text:outline-level="1">Titolo documento</text:h>
                 <text:p>Testo <text:span>di prova</text:span></text:p>
-                <text:list><text:list-item><text:p>Elemento elenco</text:p></text:list-item></text:list>
-                <table:table><table:table-row>
-                  <table:table-cell><text:p>Prima colonna</text:p></table:table-cell>
-                  <table:table-cell><text:p>Seconda colonna</text:p></table:table-cell>
-                </table:table-row></table:table>
+                <text:list text:style-name="Numbered">
+                  <text:list-item><text:p>Elemento elenco</text:p></text:list-item>
+                </text:list>
+                <table:table>
+                  <table:table-header-rows><table:table-row>
+                    <table:table-cell><text:p>Prima colonna</text:p></table:table-cell>
+                    <table:table-cell><text:p>Seconda colonna</text:p></table:table-cell>
+                  </table:table-row></table:table-header-rows>
+                  <table:table-row-group><table:table-row>
+                    <table:table-cell><text:p>Terza colonna</text:p></table:table-cell>
+                    <table:table-cell><text:p>Quarta colonna</text:p></table:table-cell>
+                  </table:table-row></table:table-row-group>
+                </table:table>
               </office:text></office:body>
             </office:document-content>''',
+        )
+        archive.writestr(
+            "styles.xml",
+            '''<?xml version="1.0" encoding="UTF-8"?>
+            <office:document-styles
+              xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+              xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+              xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0">
+              <office:styles>
+                <text:list-style style:name="Numbered">
+                  <text:list-level-style-number text:level="1" style:num-format="1"/>
+                </text:list-style>
+              </office:styles>
+            </office:document-styles>''',
         )
     return output.getvalue()
 
@@ -324,6 +347,34 @@ class PdfWorkbenchTest(unittest.TestCase):
                 self.assertIn("Seconda colonna", extracted_text)
                 if filename.endswith(".odt"):
                     self.assertIn("Elemento elenco", extracted_text)
+
+    def test_odt_conversion_preserves_numbered_lists_and_grouped_table_rows(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "Report.odt"
+            source.write_bytes(make_odt())
+
+            html, _ = pdf4um_app._odt_to_html(source)
+
+        response = self.post(
+            "/api/documents-to-pdf",
+            {"file": self.upload("Report.odt", make_odt())},
+        )
+
+        self.assertIn("<ol>", html)
+        self.assertIn("</ol>", html)
+        self.assertEqual(html.count("<tr>"), 2)
+        self.assertIn("Prima colonna", html)
+        self.assertIn("Seconda colonna", html)
+        self.assertIn("Terza colonna", html)
+        self.assertIn("Quarta colonna", html)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "application/pdf")
+        extracted_text = "\n".join(
+            page.extract_text() or "" for page in PdfReader(io.BytesIO(response.data)).pages
+        )
+        self.assertIn("Elemento elenco", extracted_text)
+        self.assertIn("Seconda colonna", extracted_text)
+        self.assertIn("Quarta colonna", extracted_text)
 
     def test_document_conversion_rejects_unsupported_and_invalid_files(self):
         unsupported = self.post(
