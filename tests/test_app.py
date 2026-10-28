@@ -57,22 +57,13 @@ def make_image(format_name: str, color: str, size: tuple[int, int] = (120, 80)) 
 
 def make_docx() -> bytes:
     output = io.BytesIO()
-    with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr(
-            "word/document.xml",
-            '''<?xml version="1.0" encoding="UTF-8"?>
-            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-              <w:body>
-                <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Titolo documento</w:t></w:r></w:p>
-                <w:p><w:r><w:t>Testo di prova</w:t></w:r></w:p>
-                <w:tbl><w:tr>
-                  <w:tc><w:p><w:r><w:t>Prima colonna</w:t></w:r></w:p></w:tc>
-                  <w:tc><w:p><w:r><w:t>Seconda colonna</w:t></w:r></w:p></w:tc>
-                </w:tr></w:tbl>
-                <w:sectPr/>
-              </w:body>
-            </w:document>''',
-        )
+    document = pdf4um_app.Document()
+    document.add_heading("Titolo documento", level=1)
+    document.add_paragraph("Testo di prova")
+    cells = document.add_table(rows=1, cols=2).rows[0].cells
+    cells[0].text = "Prima colonna"
+    cells[1].text = "Seconda colonna"
+    document.save(output)
     return output.getvalue()
 
 
@@ -174,14 +165,12 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertIn(b'value="images-to-pdf"', response.data)
         self.assertIn(b"Converti immagini in PDF", response.data)
         self.assertIn(b'value="documents-to-pdf"', response.data)
-        self.assertIn(b'value="docx-to-pdf-browser"', response.data)
-        self.assertIn(b"Converti DOCX in PDF nel browser", response.data)
-        self.assertIn(b"il DOCX non viene caricato sul server", response.data)
-        self.assertIn(b"viene suddiviso in pagine PDF usando il formato impostato nel DOCX (A4 incluso)", response.data)
-        self.assertIn(b"cercando di non spezzare le righe di testo", response.data)
-        self.assertIn(b"docx-preview@0.3.6", response.data)
-        self.assertIn(b"html2canvas@1.4.1", response.data)
-        self.assertIn(b"jspdf@2.5.2", response.data)
+        self.assertIn(b'value="docx-to-pdf"', response.data)
+        self.assertIn(b"Converti DOCX in PDF", response.data)
+        self.assertIn(b"Il documento viene elaborato sul server", response.data)
+        self.assertNotIn(b"docx-preview@", response.data)
+        self.assertNotIn(b"html2canvas@", response.data)
+        self.assertNotIn(b"jspdf@", response.data)
         self.assertIn(b'href="styles.css"', response.data)
         self.assertIn(b'src="app.js"', response.data)
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")

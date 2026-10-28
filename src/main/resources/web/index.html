@@ -7,9 +7,6 @@
   <title>PDF4Um — strumenti PDF</title>
   <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous" defer></script>
-  <script src="https://unpkg.com/docx-preview@0.3.6/dist/docx-preview.min.js" integrity="sha384-kKPxR3hMxt6X0EM6PYDjS3F8X1XaTZE4HfBd4Fv6CRcS+KuEy/P0itqZAIkg7JCR" crossorigin="anonymous" defer></script>
-  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous" defer></script>
-  <script src="https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -119,7 +116,7 @@
           </span>
         </label>
         <label class="operation-option">
-          <input type="radio" name="operation" value="docx-to-pdf-browser">
+          <input type="radio" name="operation" value="docx-to-pdf">
           <span class="operation-content">
             <svg class="operation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3.75h8l4 4v12.5H6z"/><path d="M14 3.75v4h4M9 12h6M9 15h6M9 18h4"/></svg>
             <span class="operation-label">DOCX in PDF</span>
@@ -230,9 +227,9 @@
         <p>Seleziona un documento ODT. La conversione mantiene testo, titoli, paragrafi, elenchi e tabelle semplici; l'impaginazione e la formattazione avanzata possono differire dall'originale.</p>
       </section>
 
-      <section class="settings-panel" data-panel="docx-to-pdf-browser" aria-labelledby="docx-to-pdf-heading" hidden>
-        <h3 id="docx-to-pdf-heading">Converti DOCX in PDF nel browser</h3>
-        <p>Il documento viene renderizzato nel browser e il PDF viene creato sul tuo dispositivo: il DOCX non viene caricato sul server. Il contenuto che supera un foglio viene suddiviso in pagine PDF usando il formato impostato nel DOCX (A4 incluso), cercando di non spezzare le righe di testo; sono rispettate anche le interruzioni pagina presenti nel documento. L'aspetto dipende dal browser e può differire da Microsoft Word. La prima conversione carica le librerie da un CDN.</p>
+      <section class="settings-panel" data-panel="docx-to-pdf" aria-labelledby="docx-to-pdf-heading" hidden>
+        <h3 id="docx-to-pdf-heading">Converti DOCX in PDF</h3>
+        <p>Seleziona un documento DOCX. La conversione mantiene testo, titoli, paragrafi, elenchi e tabelle semplici; l'impaginazione e la formattazione avanzata possono differire dall'originale. Il documento viene elaborato sul server e rimosso al termine della richiesta.</p>
       </section>
 
       <div class="action-row">
