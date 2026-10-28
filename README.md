@@ -6,7 +6,8 @@ files. DOCX documents are rendered in the browser and converted to image-based
 PDF pages on the user's device; the source document is not uploaded to the
 server. This uses pinned libraries loaded from unpkg, respects page breaks
 stored in the DOCX, and splits overflowing content across PDF pages at text-line
-boundaries using the document's page dimensions (including standard A4).
+boundaries while retaining the document's page margins and dimensions (including
+standard A4).
 Rendering may still differ from Microsoft Word. ODT conversion uses ReportLab
 on the server and preserves text, headings, paragraphs, lists, and basic tables;
 page layout and advanced formatting may differ from the source. Neither

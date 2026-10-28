@@ -593,6 +593,8 @@
         const computedStyle = window.getComputedStyle(page);
         const widthPx = bounds.width;
         const heightPx = Number.parseFloat(computedStyle.minHeight) || bounds.height;
+        const marginTopPx = Number.parseFloat(computedStyle.paddingTop) || 0;
+        const marginBottomPx = Number.parseFloat(computedStyle.paddingBottom) || 0;
         if (widthPx <= 0 || heightPx <= 0) {
           throw new Error("Una pagina del documento non ha dimensioni valide.");
         }
@@ -606,7 +608,7 @@
           element: page,
           widthPx,
           heightPx,
-          slices: docxPageSlices(page, heightPx, contentHeightPx)
+          slices: docxPageSlices(page, heightPx, contentHeightPx, marginTopPx, marginBottomPx)
         };
       });
       const pageCount = renderedPages.reduce((count, page) => count + page.slices.length, 0);
@@ -650,7 +652,7 @@
             canvas.toDataURL("image/jpeg", 0.94),
             "JPEG",
             0,
-            0,
+            slice.topOffset * CSS_PIXELS_TO_MM,
             widthMm,
             imageHeightMm
           );
@@ -665,7 +667,7 @@
     }
   }
 
-  function docxPageSlices(page, pageHeightPx, contentHeightPx) {
+  function docxPageSlices(page, pageHeightPx, contentHeightPx, marginTopPx, marginBottomPx) {
     const pageTop = page.getBoundingClientRect().top;
     const breakpoints = [];
     const textWalker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
@@ -685,20 +687,34 @@
     }
 
     breakpoints.sort((left, right) => left - right);
+    if (contentHeightPx <= pageHeightPx) {
+      return [{ y: 0, height: contentHeightPx, topOffset: 0 }];
+    }
+
     const slices = [];
     let start = 0;
-    while (contentHeightPx - start > pageHeightPx) {
-      const limit = start + pageHeightPx;
+    let continuation = false;
+    while (true) {
+      const topOffset = continuation ? marginTopPx : 0;
+      const availableHeight = Math.max(1, pageHeightPx - topOffset - marginBottomPx);
+      if (contentHeightPx - start <= availableHeight) break;
+
+      const limit = start + availableHeight;
       let end = null;
       for (const breakpoint of breakpoints) {
         if (breakpoint > limit) break;
         if (breakpoint > start + 1) end = breakpoint;
       }
       if (end === null) end = limit;
-      slices.push({ y: start, height: end - start });
+      slices.push({ y: start, height: end - start, topOffset });
       start = end;
+      continuation = true;
     }
-    slices.push({ y: start, height: contentHeightPx - start });
+    slices.push({
+      y: start,
+      height: contentHeightPx - start,
+      topOffset: continuation ? marginTopPx : 0
+    });
     return slices;
   }
 
