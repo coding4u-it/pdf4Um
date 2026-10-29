@@ -3,11 +3,13 @@
 Pdf4Um is a web workbench for converting JPG/PNG images and DOCX/ODT documents
 to PDF, splitting, merging, renaming, protecting, and extracting text from PDF
 files. DOCX files are converted with the built-in HTML renderer, which preserves
-page dimensions, margins, paragraph styles, and supported run formatting such
-as font family, size, bold, and italic. Complex Word layout may differ from the
-original. ODT files use the built-in converter, which preserves text, headings,
-paragraphs, lists, and basic tables. Documents are processed in a temporary
-server workspace and removed after the request; no office suite is required.
+page dimensions, margins, paragraph styles, supported run formatting such as
+font family, size, color, bold, and italic, and supported Word list numbering.
+Fonts not embedded in the DOCX may be substituted, and complex Word layout may
+differ from the original. ODT files use the built-in converter, which preserves
+text, headings, paragraphs, lists, and basic tables. Documents are processed in
+a temporary server workspace and removed after the request; no office suite is
+required.
 The browser interface is served by a Python Flask backend, which processes
 server-side uploads in a temporary workspace and returns the result as a
 download. Image conversion creates one A4 page per image in the selected order.

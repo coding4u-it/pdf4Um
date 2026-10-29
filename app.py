@@ -1,4 +1,5 @@
 import base64
+from html.parser import HTMLParser
 import io
 import logging
 import os
@@ -19,7 +20,9 @@ import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
 import mammoth
+import reportlab
 from docx import Document
+from docx.text.paragraph import Paragraph as DocxParagraph
 from xhtml2pdf import pisa
 from flask import Flask, Response, abort, jsonify, request, send_file
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -427,15 +430,316 @@ def _docx_page_css(source: Path) -> str:
     )
 
 
+def _docx_ordered_list_starts(source: Path) -> list[int | None] | None:
+    word_namespace = DOCX_NAMESPACE
+    with zipfile.ZipFile(source) as archive:
+        document_xml = ET.fromstring(archive.read("word/document.xml"))
+        try:
+            numbering_xml = ET.fromstring(archive.read("word/numbering.xml"))
+        except KeyError:
+            return None
+
+    abstract_formats = {}
+    for abstract in numbering_xml.findall(f"{word_namespace}abstractNum"):
+        abstract_id = abstract.get(f"{word_namespace}abstractNumId")
+        for level in abstract.findall(f"{word_namespace}lvl"):
+            index = level.get(f"{word_namespace}ilvl", "0")
+            num_format = level.find(f"{word_namespace}numFmt")
+            level_text = level.find(f"{word_namespace}lvlText")
+            start = level.find(f"{word_namespace}start")
+            abstract_formats[(abstract_id, index)] = (
+                num_format.get(f"{word_namespace}val") if num_format is not None else None,
+                level_text.get(f"{word_namespace}val") if level_text is not None else None,
+                int(start.get(f"{word_namespace}val")) if start is not None else 1,
+            )
+
+    numbering = {}
+    for number in numbering_xml.findall(f"{word_namespace}num"):
+        number_id = number.get(f"{word_namespace}numId")
+        abstract = number.find(f"{word_namespace}abstractNumId")
+        if abstract is None:
+            continue
+        abstract_id = abstract.get(f"{word_namespace}val")
+        override = number.find(
+            f"{word_namespace}lvlOverride[@{word_namespace}ilvl='0']/"
+            f"{word_namespace}startOverride"
+        )
+        numbering[number_id] = (
+            abstract_id,
+            int(override.get(f"{word_namespace}val")) if override is not None else None,
+        )
+
+    groups = []
+    current_number_id = None
+    last_number = {}
+    for paragraph in document_xml.findall(f".//{word_namespace}body//{word_namespace}p"):
+        number_properties = paragraph.find(
+            f"{word_namespace}pPr/{word_namespace}numPr"
+        )
+        if number_properties is None:
+            has_text = any(
+                (text.text or "").strip()
+                for text in paragraph.iter(f"{word_namespace}t")
+            )
+            has_break_or_image = any(
+                element.tag in {
+                    f"{word_namespace}br",
+                    f"{word_namespace}drawing",
+                    f"{word_namespace}object",
+                }
+                for element in paragraph.iter()
+            )
+            if has_text or has_break_or_image:
+                current_number_id = None
+            continue
+        number_node = number_properties.find(f"{word_namespace}numId")
+        level_node = number_properties.find(f"{word_namespace}ilvl")
+        if number_node is None:
+            return None
+        number_id = number_node.get(f"{word_namespace}val")
+        level_index = level_node.get(f"{word_namespace}val", "0") if level_node is not None else "0"
+        number_info = numbering.get(number_id)
+        if number_info is None:
+            return None
+        abstract_id, start_override = number_info
+        level_format = abstract_formats.get((abstract_id, level_index))
+        if level_format is None:
+            return None
+        num_format, level_text, default_start = level_format
+
+        if level_index != "0":
+            if num_format not in {"bullet", "none"}:
+                return None
+            continue
+        if num_format in {"bullet", "none"}:
+            current_number_id = None
+            continue
+        if number_id != current_number_id:
+            initial_number = (
+                start_override if start_override is not None else default_start
+            )
+            start = last_number.get(number_id, initial_number)
+            marker = re.fullmatch(r"%1([.)])", level_text or "%1.")
+            groups.append(
+                start if num_format == "decimal" and marker and marker.group(1) == ")" else None
+            )
+            current_number_id = number_id
+        initial_number = start_override if start_override is not None else default_start
+        last_number[number_id] = last_number.get(number_id, initial_number) + 1
+
+    return groups
+
+
+class _DocxListMarkerFormatter(HTMLParser):
+    def __init__(self, list_starts: list[int | None]):
+        super().__init__(convert_charrefs=False)
+        self.list_starts = iter(list_starts)
+        self.list_stack = []
+        self.output = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"ol", "ul"}:
+            start = next(self.list_starts, None) if tag == "ol" else None
+            self.list_stack.append([tag, start])
+            self.output.append(
+                '<ol class="pdf4um-custom-numbering">'
+                if tag == "ol" and start is not None
+                else self.get_starttag_text()
+            )
+            return
+        if tag == "li" and self.list_stack:
+            list_tag, next_number = self.list_stack[-1]
+            if list_tag == "ol" and next_number is not None:
+                self.output.append(self.get_starttag_text())
+                self.output.append(
+                    f'<span class="pdf4um-list-marker">{next_number})</span> '
+                )
+                self.list_stack[-1][1] += 1
+                return
+        self.output.append(self.get_starttag_text())
+
+    def handle_endtag(self, tag):
+        self.output.append(f"</{tag}>")
+        if tag in {"ol", "ul"} and self.list_stack and self.list_stack[-1][0] == tag:
+            self.list_stack.pop()
+
+    def handle_startendtag(self, tag, attrs):
+        self.output.append(self.get_starttag_text())
+
+    def handle_data(self, data):
+        self.output.append(data)
+
+    def handle_entityref(self, name):
+        self.output.append(f"&{name};")
+
+    def handle_charref(self, name):
+        self.output.append(f"&#{name};")
+
+    def handle_comment(self, data):
+        self.output.append(f"<!--{data}-->")
+
+    def handle_decl(self, decl):
+        self.output.append(f"<!{decl}>")
+
+    def format(self, html):
+        self.feed(html)
+        self.close()
+        return "".join(self.output)
+
+
 def _docx_to_html(source: Path) -> tuple[str, str]:
-    page_css = _docx_page_css(source)
-    style_map = """
-        p[style-name='Heading 1'] => h1:fresh
-        p[style-name='Heading 2'] => h2:fresh
-        p[style-name='Heading 3'] => h3:fresh
-        p[style-name='Title']     => h1.title:fresh
-        p[style-name='Subtitle']  => p.subtitle:fresh
-    """
+    doc = Document(str(source))
+    with source.open("rb") as stream:
+        document = mammoth.docx.read(stream).value
+
+    paragraphs = mammoth.transforms.get_descendants_of_type(
+        document, mammoth.documents.Paragraph
+    )
+    xml_paragraphs = [
+        DocxParagraph(element, doc._body)
+        for element in doc._element.body.iter(f"{DOCX_NAMESPACE}p")
+    ]
+    runs = mammoth.transforms.get_descendants_of_type(
+        document, mammoth.documents.Run
+    )
+    xml_runs = list(doc._element.body.iter(f"{DOCX_NAMESPACE}r"))
+    run_colors = []
+    for xml_run in xml_runs:
+        properties = xml_run.find(f"{DOCX_NAMESPACE}rPr")
+        color = properties.find(f"{DOCX_NAMESPACE}color") if properties is not None else None
+        value = color.get(f"{DOCX_NAMESPACE}val") if color is not None else None
+        run_colors.append(
+            f"#{value}" if value and value.lower() != "auto" and re.fullmatch(r"[0-9A-Fa-f]{6}", value) else None
+        )
+    if len(run_colors) != len(runs):
+        run_colors = [None] * len(runs)
+
+    font_root = Path(reportlab.__file__).resolve().parent / "fonts"
+    vera_fonts = {
+        "normal": font_root / "Vera.ttf",
+        "bold": font_root / "VeraBd.ttf",
+        "italic": font_root / "VeraIt.ttf",
+        "bold_italic": font_root / "VeraBI.ttf",
+    }
+    has_vera_fonts = all(path.is_file() for path in vera_fonts.values())
+
+    def font_family(name):
+        normalized = (name or "").strip().casefold()
+        if normalized in {"verdana", "comic sans ms", "calibri", "aptos"} and has_vera_fonts:
+            return "Pdf4UmVeraSans"
+        if normalized in {"times new roman", "cambria", "georgia"}:
+            return "Times-Roman"
+        if normalized in {"courier new", "consolas"}:
+            return "Courier"
+        return "Helvetica"
+
+    def font_css(font, *, include_family=True):
+        declarations = []
+        if include_family and font.name:
+            declarations.append(f'font-family: "{font_family(font.name)}"')
+        if font.size:
+            declarations.append(f"font-size: {font.size.pt:g}pt")
+        if font.bold is not None:
+            declarations.append(f"font-weight: {'bold' if font.bold else 'normal'}")
+        if font.italic is not None:
+            declarations.append(f"font-style: {'italic' if font.italic else 'normal'}")
+        color = font.color.rgb
+        if color is not None:
+            declarations.append(f"color: #{color}")
+        return declarations
+
+    paragraph_rules = []
+    css_rules = []
+    normal_style = doc.styles["Normal"]
+    body_declarations = font_css(normal_style.font)
+    if body_declarations:
+        css_rules.append(f"body {{ {'; '.join(body_declarations)}; }}")
+    numbered_paragraphs = [paragraph for paragraph in paragraphs if paragraph.numbering]
+    if numbered_paragraphs:
+        list_runs = mammoth.transforms.get_descendants_of_type(
+            numbered_paragraphs[0], mammoth.documents.Run
+        )
+        if list_runs:
+            list_declarations = [
+                f'font-family: "{font_family(list_runs[0].font)}"'
+            ] if list_runs[0].font else []
+            if list_runs[0].font_size:
+                list_declarations.append(f"font-size: {list_runs[0].font_size:g}pt")
+            if list_declarations:
+                css_rules.append(f"ol, ul {{ {'; '.join(list_declarations)}; }}")
+    for index, paragraph in enumerate(paragraphs):
+        if paragraph.numbering:
+            continue
+        marker = f"Pdf4UmParagraph{index}"
+        style = xml_paragraphs[index].style if index < len(xml_paragraphs) else None
+        style_name = style.name if style else paragraph.style_name or ""
+        tag = {
+            "Heading 1": "h1",
+            "Heading 2": "h2",
+            "Heading 3": "h3",
+            "Title": "h1",
+            "Subtitle": "p",
+        }.get(style_name, "p")
+        paragraph_rules.append(
+            f"p[style-name='{marker}'] => {tag}.pdf4um-paragraph-{index}:fresh"
+        )
+        declarations = font_css(style.font) if style else []
+        if paragraph.alignment:
+            alignment = {"both": "justify"}.get(paragraph.alignment, paragraph.alignment)
+            declarations.append(f"text-align: {alignment}")
+        if declarations:
+            css_rules.append(
+                f".pdf4um-paragraph-{index} {{ {'; '.join(declarations)}; }}"
+            )
+
+    run_rules = []
+    for index, run in enumerate(runs):
+        marker = f"Pdf4UmRun{index}"
+        run_rules.append(f"r[style-name='{marker}'] => span.pdf4um-run-{index}")
+        declarations = [f'font-family: "{font_family(run.font)}"'] if run.font else []
+        if run.font_size:
+            declarations.append(f"font-size: {run.font_size:g}pt")
+        if run.is_bold is not None:
+            declarations.append(f"font-weight: {'bold' if run.is_bold else 'normal'}")
+        if run.is_italic is not None:
+            declarations.append(f"font-style: {'italic' if run.is_italic else 'normal'}")
+        if run.is_underline is not None or run.is_strikethrough is not None:
+            decorations = []
+            if run.is_underline:
+                decorations.append("underline")
+            if run.is_strikethrough:
+                decorations.append("line-through")
+            declarations.append(
+                f"text-decoration: {' '.join(decorations) if decorations else 'none'}"
+            )
+        if run.is_all_caps:
+            declarations.append("text-transform: uppercase")
+        if run.is_small_caps:
+            declarations.append("font-variant: small-caps")
+        if index < len(run_colors) and run_colors[index]:
+            declarations.append(f"color: {run_colors[index]}")
+        if declarations:
+            css_rules.append(f".pdf4um-run-{index} {{ {'; '.join(declarations)}; }}")
+
+    paragraph_index = iter(range(len(paragraphs)))
+    run_index = iter(range(len(runs)))
+
+    def apply_paragraph_style(paragraph):
+        index = next(paragraph_index)
+        if paragraph.numbering:
+            return paragraph
+        return paragraph.copy(style_name=f"Pdf4UmParagraph{index}")
+
+    transform_paragraph = mammoth.transforms.paragraph(apply_paragraph_style)
+    transform_run = mammoth.transforms.run(
+        lambda run: run.copy(style_name=f"Pdf4UmRun{next(run_index)}")
+    )
+
+    def transform_document(value):
+        return transform_run(transform_paragraph(value))
+
+    style_map = "\n".join(paragraph_rules + run_rules)
+
     def _image_handler(image):
         with image.open() as img:
             encoded = base64.b64encode(img.read()).decode("ascii")
@@ -444,9 +748,29 @@ def _docx_to_html(source: Path) -> tuple[str, str]:
     with source.open("rb") as stream:
         result = mammoth.convert_to_html(
             stream,
+            transform_document=transform_document,
             style_map=style_map,
             convert_image=mammoth.images.img_element(_image_handler),
         )
+    list_starts = _docx_ordered_list_starts(source)
+    if list_starts and any(start is not None for start in list_starts):
+        html_list_count = len(re.findall(r"<ol(?:\s|>)", result.value))
+        if html_list_count == len(list_starts):
+            result.value = _DocxListMarkerFormatter(list_starts).format(result.value)
+            css_rules.append(".pdf4um-custom-numbering { list-style-type: none; }")
+        else:
+            LOGGER.warning(
+                "DOCX ordered-list groups could not be matched; using default numbering."
+            )
+    if has_vera_fonts:
+        font_faces = "\n".join(
+            f'@font-face {{ font-family: "Pdf4UmVeraSans"; src: url("{path.as_uri()}");'
+            f"{' font-weight: bold;' if 'bold' in name else ''}"
+            f"{' font-style: italic;' if 'italic' in name else ''} }}"
+            for name, path in vera_fonts.items()
+        )
+        css_rules.insert(0, font_faces)
+    page_css = _docx_page_css(source) + "\n" + "\n".join(css_rules)
     return result.value, page_css
 
 
@@ -596,7 +920,6 @@ def _html_to_pdf(html: str, page_css: str, output: Path) -> None:
     full = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"/>
 <style>
-{page_css}
 body {{ font-family: Helvetica, Arial, sans-serif; font-size: 11pt; line-height: 1.35; color: #000; }}
 h1 {{ font-size: 18pt; margin: 0 0 8pt 0; }}
 h2 {{ font-size: 15pt; margin: 12pt 0 6pt 0; }}
@@ -608,6 +931,7 @@ th {{ background: #f0f0f0; }}
 img {{ max-width: 100%; }}
 ul, ol {{ margin: 4pt 0 6pt 18pt; padding: 0; }}
 li {{ margin-bottom: 2pt; }}
+{page_css}
 </style></head>
 <body>{html}</body></html>"""
     with output.open("wb") as stream:

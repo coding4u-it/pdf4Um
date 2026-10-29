@@ -397,6 +397,22 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertIn("font-size: 26pt", css)
         self.assertTrue(any("Heading style preserved" in text and size == 26 for text, size in text_runs))
 
+    def test_docx_conversion_preserves_parenthesized_list_markers(self):
+        html = pdf4um_app._DocxListMarkerFormatter([1]).format(
+            "<ol><li>Primo elemento</li><li>Secondo elemento</li></ol>"
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output = Path(temporary_directory) / "numbering.pdf"
+            pdf4um_app._html_to_pdf(
+                html,
+                ".pdf4um-custom-numbering { list-style-type: none; }",
+                output,
+            )
+            text = PdfReader(output).pages[0].extract_text()
+
+        self.assertIn("1) Primo elemento", text)
+        self.assertIn("2) Secondo elemento", text)
+
     def test_odt_conversion_preserves_numbered_lists_and_grouped_table_rows(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             source = Path(temporary_directory) / "Report.odt"
