@@ -19,10 +19,8 @@ import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
 import mammoth
-from mammoth import documents as mammoth_documents
 from docx import Document
 from xhtml2pdf import pisa
-from xhtml2pdf.default import DEFAULT_FONT
 from flask import Flask, Response, abort, jsonify, request, send_file
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pypdf import PdfReader, PdfWriter
@@ -394,6 +392,7 @@ def _document_to_pdf(source: Path, workspace: Path) -> Path:
 
         if not html.strip():
             raise ValueError("The document has no supported content.")
+
         _html_to_pdf(html, page_css, output)
 
         reader = PdfReader(output, strict=False)
@@ -429,72 +428,14 @@ def _docx_page_css(source: Path) -> str:
 
 
 def _docx_to_html(source: Path) -> tuple[str, str]:
-    doc = Document(str(source))
     page_css = _docx_page_css(source)
-    with source.open("rb") as stream:
-        parsed = mammoth.docx.read(stream)
-    if parsed.value is None:
-        raise ValueError("The DOCX document could not be read.")
-    run_colors = _docx_run_colors(doc)
-
-    paragraph_styles: dict[tuple, int] = {}
-    run_styles: dict[tuple, int] = {}
-    style_rules = []
-    style_css = []
-
-    for paragraph in mammoth.transforms.get_descendants_of_type(
-        parsed.value, mammoth_documents.Paragraph
-    ):
-        key = _mammoth_paragraph_style_key(paragraph)
-        if key not in paragraph_styles:
-            index = len(paragraph_styles)
-            paragraph_styles[key] = index
-            tag = _docx_paragraph_tag(paragraph.style_id, paragraph.style_name)
-            style_rules.append(
-                f"p[style-name='Pdf4UmParagraph{index}'] => "
-                f"{tag}.pdf4um-paragraph-{index}:fresh"
-            )
-            style = _docx_find_style(doc, paragraph.style_id, paragraph.style_name)
-            declarations = _docx_style_css(style, paragraph=True)
-            declarations.update(_docx_paragraph_direct_css(paragraph))
-            style_css.append(_css_rule(f".pdf4um-paragraph-{index}", declarations))
-
-    for run_index, run in enumerate(
-        mammoth.transforms.get_descendants_of_type(parsed.value, mammoth_documents.Run)
-    ):
-        color = run_colors[run_index] if run_index < len(run_colors) else None
-        key = _mammoth_run_style_key(run, color)
-        if key not in run_styles:
-            index = len(run_styles)
-            run_styles[key] = index
-            style_rules.append(
-                f"r[style-name='Pdf4UmRun{index}'] => span.pdf4um-run-{index}"
-            )
-            style = _docx_find_style(doc, run.style_id, run.style_name)
-            declarations = _docx_style_css(style, paragraph=False)
-            declarations.update(_docx_run_direct_css(run, color))
-            style_css.append(_css_rule(f".pdf4um-run-{index}", declarations))
-
-    transform_paragraph = mammoth.transforms.paragraph(
-        lambda paragraph: paragraph.copy(
-            style_name=f"Pdf4UmParagraph{paragraph_styles[_mammoth_paragraph_style_key(paragraph)]}"
-        )
-    )
-    run_index = 0
-
-    def transform_run_style(run):
-        nonlocal run_index
-        color = run_colors[run_index] if run_index < len(run_colors) else None
-        run_index += 1
-        return run.copy(
-            style_name=f"Pdf4UmRun{run_styles[_mammoth_run_style_key(run, color)]}"
-        )
-
-    transform_run = mammoth.transforms.run(transform_run_style)
-
-    def transform_document(element):
-        return transform_paragraph(transform_run(element))
-
+    style_map = """
+        p[style-name='Heading 1'] => h1:fresh
+        p[style-name='Heading 2'] => h2:fresh
+        p[style-name='Heading 3'] => h3:fresh
+        p[style-name='Title']     => h1.title:fresh
+        p[style-name='Subtitle']  => p.subtitle:fresh
+    """
     def _image_handler(image):
         with image.open() as img:
             encoded = base64.b64encode(img.read()).decode("ascii")
@@ -503,189 +444,10 @@ def _docx_to_html(source: Path) -> tuple[str, str]:
     with source.open("rb") as stream:
         result = mammoth.convert_to_html(
             stream,
-            transform_document=transform_document,
-            style_map="\n".join(style_rules),
+            style_map=style_map,
             convert_image=mammoth.images.img_element(_image_handler),
         )
-    return result.value, page_css + "\n" + "\n".join(style_css)
-
-
-def _mammoth_paragraph_style_key(paragraph) -> tuple:
-    indent = paragraph.indent
-    return (
-        paragraph.style_id,
-        paragraph.style_name,
-        paragraph.alignment,
-        indent.start,
-        indent.end,
-        indent.first_line,
-        indent.hanging,
-    )
-
-
-def _mammoth_run_style_key(run, color: str | None = None) -> tuple:
-    return (
-        run.style_id,
-        run.style_name,
-        run.font,
-        run.font_size,
-        run.is_bold,
-        run.is_italic,
-        run.is_underline,
-        run.is_strikethrough,
-        run.is_all_caps,
-        run.is_small_caps,
-        run.highlight,
-        color,
-    )
-
-
-def _docx_run_colors(doc) -> list[str | None]:
-    colors = []
-    for run in doc._element.iter(f"{DOCX_NAMESPACE}r"):
-        properties = run.find(f"{DOCX_NAMESPACE}rPr")
-        color = properties.find(f"{DOCX_NAMESPACE}color") if properties is not None else None
-        value = color.get(f"{DOCX_NAMESPACE}val") if color is not None else None
-        colors.append(value.upper() if value and re.fullmatch(r"[0-9A-Fa-f]{6}", value) else None)
-    return colors
-
-
-def _docx_find_style(doc, style_id: str | None, style_name: str | None):
-    for style in doc.styles:
-        if (style_id and style.style_id == style_id) or (style_name and style.name == style_name):
-            return style
-    return None
-
-
-def _docx_paragraph_tag(style_id: str | None, style_name: str | None) -> str:
-    heading = re.fullmatch(r"Heading([1-9])", style_id or "")
-    if heading is None:
-        heading = re.fullmatch(r"Heading\s+([1-9])", style_name or "", re.IGNORECASE)
-    if heading:
-        return f"h{heading.group(1)}"
-    if (style_id or "").lower() == "title" or (style_name or "").lower() == "title":
-        return "h1"
-    return "p"
-
-
-def _docx_style_chain(style):
-    while style is not None:
-        yield style
-        style = style.base_style
-
-
-def _docx_style_css(style, paragraph: bool) -> dict[str, str]:
-    declarations = {}
-    if style is None:
-        return declarations
-
-    for current in _docx_style_chain(style):
-        font = current.font
-        for attribute, css_name in (
-            ("name", "font-family"),
-            ("size", "font-size"),
-            ("bold", "font-weight"),
-            ("italic", "font-style"),
-        ):
-            if css_name in declarations:
-                continue
-            value = getattr(font, attribute)
-            if value is not None:
-                declarations[css_name] = _docx_font_css_value(css_name, value)
-        if "color" not in declarations:
-            color = font.color.rgb
-            if color is not None:
-                declarations["color"] = f"#{color}"
-
-        if paragraph:
-            paragraph_format = current.paragraph_format
-            for attribute, css_name in (
-                ("alignment", "text-align"),
-                ("space_before", "margin-top"),
-                ("space_after", "margin-bottom"),
-                ("left_indent", "margin-left"),
-                ("right_indent", "margin-right"),
-                ("first_line_indent", "text-indent"),
-            ):
-                if css_name in declarations:
-                    continue
-                value = getattr(paragraph_format, attribute)
-                if value is not None:
-                    declarations[css_name] = _docx_paragraph_css_value(css_name, value)
-    return declarations
-
-
-def _docx_font_css_value(css_name: str, value) -> str:
-    if css_name == "font-family":
-        name = re.sub(r"[^A-Za-z0-9 _-]", "", str(value)).strip()
-        normalized = name.casefold()
-        aliases = {
-            "liberation serif": "Times-Roman",
-            "cambria": "Times-Roman",
-            "calibri": "Helvetica",
-            "aptos": "Helvetica",
-            "liberation sans": "Helvetica",
-            "liberation mono": "Courier",
-        }
-        family = aliases.get(normalized) or DEFAULT_FONT.get(normalized)
-        if family is None:
-            family = "Times-Roman" if "serif" in normalized else "Courier" if "mono" in normalized else "Helvetica"
-        return f'"{family}"'
-    if css_name == "font-size":
-        return f"{float(value.pt):g}pt"
-    if css_name == "font-weight":
-        return "bold" if value else "normal"
-    return "italic" if value else "normal"
-
-
-def _docx_paragraph_css_value(css_name: str, value) -> str:
-    if css_name == "text-align":
-        alignment = str(value).lower()
-        return "justify" if alignment in {"both", "distribute"} else alignment
-    return f"{float(value) / 12700:g}pt"
-
-
-def _docx_paragraph_direct_css(paragraph) -> dict[str, str]:
-    declarations = {}
-    if paragraph.alignment:
-        alignment = paragraph.alignment.lower()
-        declarations["text-align"] = "justify" if alignment in {"both", "distribute"} else alignment
-    indent = paragraph.indent
-    for key, css_name in (("start", "margin-left"), ("end", "margin-right")):
-        value = getattr(indent, key)
-        if value is not None and value.lstrip("-").isdigit():
-            declarations[css_name] = f"{int(value) / 20:g}pt"
-    if indent.first_line is not None and indent.first_line.lstrip("-").isdigit():
-        declarations["text-indent"] = f"{int(indent.first_line) / 20:g}pt"
-    elif indent.hanging is not None and indent.hanging.lstrip("-").isdigit():
-        declarations["text-indent"] = f"{-int(indent.hanging) / 20:g}pt"
-    return declarations
-
-
-def _docx_run_direct_css(run, color: str | None) -> dict[str, str]:
-    declarations = {}
-    if run.font:
-        declarations["font-family"] = _docx_font_css_value("font-family", run.font)
-    if run.font_size is not None and 0 < run.font_size <= 500:
-        declarations["font-size"] = f"{run.font_size:g}pt"
-    if color:
-        declarations["color"] = f"#{color}"
-    if run.highlight:
-        highlight = re.sub(r"[^A-Za-z]", "", run.highlight).lower()
-        if highlight in {
-            "yellow", "green", "cyan", "magenta", "blue", "red",
-            "darkblue", "darkcyan", "darkgreen", "darkmagenta", "darkred",
-            "darkyellow", "darkgray", "lightgray", "black", "white",
-        }:
-            declarations["background-color"] = highlight
-    return declarations
-
-
-def _css_rule(selector: str, declarations: dict[str, str]) -> str:
-    if not declarations:
-        return ""
-    properties = " ".join(f"{name}: {value};" for name, value in declarations.items())
-    return f"{selector} {{ {properties} }}"
+    return result.value, page_css
 
 
 # --- Funzioni specifiche per ODT ---
@@ -737,17 +499,6 @@ def _extract_odt_styles(root: ET.Element) -> dict:
     return styles
 
 
-def _extract_odt_list_styles(root: ET.Element) -> dict[str, str]:
-    list_styles = {}
-    for style in root.findall(f".//{ODT_TEXT_NAMESPACE}list-style"):
-        name = style.get(f"{ODT_STYLE_NAMESPACE}name")
-        if not name:
-            continue
-        level = style.find(f"{ODT_TEXT_NAMESPACE}list-level-style-number")
-        list_styles[name] = "ol" if level is not None else "ul"
-    return list_styles
-
-
 def _odt_to_html(source: Path) -> tuple[str, str]:
     page_css = _odt_page_css(source)
     with zipfile.ZipFile(source) as archive:
@@ -760,24 +511,16 @@ def _odt_to_html(source: Path) -> tuple[str, str]:
 
         text_styles = _extract_odt_styles(styles_root)
         text_styles.update(_extract_odt_styles(root))
-        list_styles = _extract_odt_list_styles(styles_root)
-        list_styles.update(_extract_odt_list_styles(root))
 
         body = root.find(f".//{ODT_OFFICE_NAMESPACE}body/{ODT_OFFICE_NAMESPACE}text")
         if body is None:
             raise ValueError("The ODT body is missing.")
 
-        html = _odt_blocks_to_html(body, archive, text_styles, list_styles)
+        html = _odt_blocks_to_html(body, archive, text_styles)
     return html, page_css
 
 
-def _odt_blocks_to_html(
-    element: ET.Element,
-    archive: zipfile.ZipFile,
-    text_styles: dict,
-    list_styles: dict[str, str],
-    inherited_list_style: str | None = None,
-) -> str:
+def _odt_blocks_to_html(element: ET.Element, archive: zipfile.ZipFile, text_styles: dict) -> str:
     html = []
     for child in element:
         if child.tag in {f"{ODT_TEXT_NAMESPACE}p", f"{ODT_TEXT_NAMESPACE}h"}:
@@ -786,46 +529,25 @@ def _odt_blocks_to_html(
             html.append(f"<{tag}>{inline_html}</{tag}>")
 
         elif child.tag == f"{ODT_TEXT_NAMESPACE}list":
-            style_name = child.get(f"{ODT_TEXT_NAMESPACE}style-name", inherited_list_style)
-            list_tag = list_styles.get(style_name, "ul")
-            html.append(f"<{list_tag}>")
-            for item in child:
-                if item.tag in {f"{ODT_TEXT_NAMESPACE}list-item", f"{ODT_TEXT_NAMESPACE}list-header"}:
-                    html.append("<li>")
-                    html.append(_odt_blocks_to_html(item, archive, text_styles, list_styles, style_name))
-                    html.append("</li>")
-            html.append(f"</{list_tag}>")
+            html.append("<ul>")
+            for item in child.findall(f"{ODT_TEXT_NAMESPACE}list-item"):
+                html.append("<li>")
+                html.append(_odt_blocks_to_html(item, archive, text_styles))
+                html.append("</li>")
+            html.append("</ul>")
 
         elif child.tag == f"{ODT_TABLE_NAMESPACE}table":
             html.append("<table>")
-            for row in _odt_table_rows(child):
+            for row in child.findall(f"{ODT_TABLE_NAMESPACE}table-row"):
                 html.append("<tr>")
                 for cell in row:
                     if cell.tag in {f"{ODT_TABLE_NAMESPACE}table-cell", f"{ODT_TABLE_NAMESPACE}covered-table-cell"}:
                         html.append("<td>")
-                        html.append(_odt_blocks_to_html(cell, archive, text_styles, list_styles))
+                        html.append(_odt_blocks_to_html(cell, archive, text_styles))
                         html.append("</td>")
                 html.append("</tr>")
             html.append("</table>")
     return "".join(html)
-
-
-def _odt_table_rows(table: ET.Element):
-    row_tags = {
-        f"{ODT_TABLE_NAMESPACE}table-row",
-        f"{ODT_TABLE_NAMESPACE}table-header-rows",
-        f"{ODT_TABLE_NAMESPACE}table-row-group",
-        f"{ODT_TABLE_NAMESPACE}table-rows",
-    }
-
-    def rows(container: ET.Element):
-        for child in container:
-            if child.tag == f"{ODT_TABLE_NAMESPACE}table-row":
-                yield child
-            elif child.tag in row_tags:
-                yield from rows(child)
-
-    yield from rows(table)
 
 
 def _odt_inline_to_html(element: ET.Element, archive: zipfile.ZipFile, text_styles: dict) -> str:
