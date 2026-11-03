@@ -25,6 +25,15 @@ scanned pages; review every page and the downloaded result before sharing it.
 PyMuPDF is dual-licensed under AGPL or a commercial license. Verify that your
 chosen license permits your deployment and that you meet its obligations.
 
+## Licenza
+
+Questo progetto è distribuito sotto licenza **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+Il testo completo della licenza è disponibile nel file [LICENSE](./LICENSE).
+
+Poiché PDF4UM è un servizio accessibile via rete, ai sensi dell'articolo 13 della licenza AGPL,
+il codice sorgente della versione in esecuzione è disponibile al seguente indirizzo:
+https://github.com/coding4u-it/pdf4Um/tree/helio
+
 ## Run locally
 
 Requires Python 3.10 or later.
