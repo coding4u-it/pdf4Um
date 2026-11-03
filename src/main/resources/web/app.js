@@ -7,6 +7,7 @@
     rename: "Rinomina PDF",
     encrypt: "Proteggi PDF",
     extract: "Estrai testo",
+    anonymize: "Anonimizza PDF",
     "images-to-pdf": "Converti in PDF",
     "documents-to-pdf": "Converti ODT in PDF",
     "docx-to-pdf": "Converti DOCX in PDF"
@@ -15,6 +16,13 @@
   const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
   const ODT_EXTENSIONS = [".odt"];
   const DOCX_EXTENSIONS = [".docx"];
+  const ANONYMIZE_CATEGORY_LABELS = {
+    email: "Email",
+    telefono: "Telefono",
+    "codice-fiscale": "Codice fiscale",
+    "partita-iva": "Partita IVA",
+    testo: "Testo cercato"
+  };
   const PDF_ACCEPT = ".pdf,application/pdf";
   const IMAGE_ACCEPT = ".jpg,.jpeg,.png,image/jpeg,image/png";
   const ODT_ACCEPT = ".odt,application/vnd.oasis.opendocument.text";
@@ -24,7 +32,9 @@
     files: [],
     downloadUrl: null,
     busy: false,
-    pendingFocus: null
+    pendingFocus: null,
+    anonymizePreview: null,
+    anonymizePage: 0
   };
 
   const elements = {
@@ -47,6 +57,16 @@
     startingNumber: document.getElementById("starting-number"),
     codeLength: document.getElementById("code-length"),
     password: document.getElementById("password"),
+    anonymizePreview: document.getElementById("anonymize-preview"),
+    anonymizeSummary: document.getElementById("anonymize-summary"),
+    anonymizeNoText: document.getElementById("anonymize-no-text"),
+    anonymizePageSelect: document.getElementById("anonymize-page-select"),
+    anonymizePageView: document.getElementById("anonymize-page-view"),
+    anonymizeSuggestions: document.getElementById("anonymize-suggestions"),
+    anonymizeManualAreas: document.getElementById("anonymize-manual-areas"),
+    anonymizeConfirmed: document.getElementById("anonymize-confirmed"),
+    anonymizePrevious: document.getElementById("anonymize-page-previous"),
+    anonymizeNext: document.getElementById("anonymize-page-next"),
     runButton: document.getElementById("run-operation"),
     submitHelp: document.getElementById("submit-help"),
     privacyNote: document.getElementById("privacy-note-text"),
@@ -68,6 +88,17 @@
     input.addEventListener("change", onSettingsChange);
   });
   elements.runButton.addEventListener("click", submitOperation);
+  elements.anonymizePageSelect.addEventListener("change", () => {
+    state.anonymizePage = Number(elements.anonymizePageSelect.value);
+    renderAnonymizationPage();
+  });
+  elements.anonymizePrevious.addEventListener("click", () => changeAnonymizationPage(-1));
+  elements.anonymizeNext.addEventListener("click", () => changeAnonymizationPage(1));
+  elements.anonymizeConfirmed.addEventListener("change", updateControls);
+  document.querySelectorAll('input[name="anonymize-category"], #anonymize-terms').forEach((input) => {
+    input.addEventListener("input", invalidateAnonymizationPreview);
+    input.addEventListener("change", invalidateAnonymizationPreview);
+  });
 
   function currentOperation() {
     const selected = elements.operationRadios.find((radio) => radio.checked);
@@ -94,6 +125,8 @@
       }
     });
     elements.picker.value = "";
+    state.anonymizePreview = null;
+    elements.anonymizeConfirmed.checked = false;
     clearResult();
     renderFiles();
     updateControls();
@@ -133,6 +166,8 @@
 
   function clearSelectedFiles() {
     state.files = [];
+    state.anonymizePreview = null;
+    elements.anonymizeConfirmed.checked = false;
     elements.picker.value = "";
     clearResult();
     renderFiles();
@@ -280,7 +315,9 @@
         : operation === "documents-to-pdf" ? "Un file ODT · massimo 100 MiB"
         : "Massimo 32 PDF e 100 MiB complessivi per operazione";
     elements.operationRadios.forEach((radio) => { radio.disabled = state.busy; });
-    document.querySelectorAll(".settings-panel input").forEach((input) => { input.disabled = state.busy; });
+    document.querySelectorAll(
+      ".settings-panel input, .settings-panel textarea, .settings-panel select, .settings-panel button"
+    ).forEach((control) => { control.disabled = state.busy; });
 
     const splitMode = document.querySelector('input[name="split-mode"]:checked').value;
     elements.pagesField.hidden = splitMode !== "groups";
@@ -291,7 +328,14 @@
 
     const requirement = getRequirement(operation);
     elements.runButton.textContent = operationLabels[operation];
-    elements.runButton.disabled = state.busy || !requirement.valid;
+    if (operation === "anonymize") {
+      elements.runButton.textContent = hasCurrentAnonymizationPreview()
+        ? "Anonimizza e scarica PDF"
+        : "Analizza PDF";
+    }
+    elements.runButton.disabled = state.busy || !requirement.valid ||
+      (operation === "anonymize" && hasCurrentAnonymizationPreview() &&
+        !elements.anonymizeConfirmed.checked);
     elements.submitHelp.textContent = requirement.message;
     elements.clearSelection.disabled = state.files.length === 0 || state.busy;
     elements.selectionRequirement.textContent = selectionRequirement(operation);
@@ -305,6 +349,9 @@
   }
 
   function selectionRequirement(operation) {
+    if (operation === "anonymize") {
+      return "Seleziona un solo PDF da esaminare e anonimizzare.";
+    }
     if (operation === "split" || operation === "extract") {
       return operation === "split"
         ? "Per dividere il documento, seleziona esattamente un PDF."
@@ -391,6 +438,8 @@
       if (!elements.password.value) return { valid: false, message: "Inserisci una password per proteggere i PDF." };
     } else if (operation === "extract" && state.files.length !== 1) {
       return { valid: false, message: "Seleziona un solo PDF da cui estrarre il testo." };
+    } else if (operation === "anonymize" && state.files.length !== 1) {
+      return { valid: false, message: "Seleziona un solo PDF da anonimizzare." };
     } else if (operation === "images-to-pdf" && state.files.length < 1) {
       return { valid: false, message: "Seleziona almeno un'immagine JPG o PNG da convertire." };
     } else if (operation === "documents-to-pdf" && state.files.length !== 1) {
@@ -400,7 +449,9 @@
     }
     return { valid: true, message: operation === "merge"
       ? "I PDF saranno uniti nell'ordine mostrato nell'elenco."
-      : "I file originali non verranno modificati." };
+      : operation === "anonymize" && hasCurrentAnonymizationPreview()
+        ? "Controlla le aree e conferma prima di rimuovere i dati."
+        : "I file originali non verranno modificati." };
   }
 
   function validInteger(value, minimum, maximum) {
@@ -467,6 +518,13 @@
     const requirement = getRequirement(operation);
     if (!requirement.valid) return;
     if (!validateBeforeSubmit(operation)) return;
+    if (operation === "anonymize" && hasCurrentAnonymizationPreview() &&
+        !elements.anonymizeConfirmed.checked) return;
+
+    if (operation === "anonymize" && !hasCurrentAnonymizationPreview()) {
+      await analyzeAnonymization();
+      return;
+    }
 
     const formData = buildRequest(operation);
     clearResult();
@@ -505,6 +563,11 @@
       elements.resultError.textContent = "";
       elements.downloadLink.click();
       if (operation === "encrypt") elements.password.value = "";
+      if (operation === "anonymize") {
+        state.anonymizePreview = null;
+        elements.anonymizePreview.hidden = true;
+        elements.anonymizeConfirmed.checked = false;
+      }
     } catch (error) {
       setResultState("error");
       elements.resultStatus.textContent = "";
@@ -520,9 +583,256 @@
     }
   }
 
+  async function analyzeAnonymization() {
+    if (state.busy || state.files.length !== 1) return;
+    const formData = new FormData();
+    formData.append("file", state.files[0], state.files[0].name);
+    formData.append(
+      "categories",
+      JSON.stringify(Array.from(document.querySelectorAll('input[name="anonymize-category"]:checked'))
+        .map((input) => input.value))
+    );
+    formData.append("terms", document.getElementById("anonymize-terms").value);
+
+    clearResult();
+    showResult();
+    setResultState("working");
+    elements.resultStatus.textContent = "Analisi del PDF in corso.";
+    elements.progress.hidden = false;
+    state.busy = true;
+    updateControls();
+
+    try {
+      const response = await fetch("api/anonymize-preview", { method: "POST", body: formData });
+      if (!response.ok) {
+        await handleFailure(response, "anonymize");
+        return;
+      }
+      const result = await response.json();
+      if (!Array.isArray(result.pages) || !Array.isArray(result.suggestions) ||
+          typeof result.hasExtractableText !== "boolean") {
+        throw new Error("Invalid anonymization preview response.");
+      }
+      state.anonymizePreview = {
+        fileKey: fileKey(state.files[0]),
+        pages: result.pages,
+        hasExtractableText: result.hasExtractableText,
+        suggestions: result.suggestions.map((suggestion) => ({ ...suggestion, selected: true })),
+        manualAreas: []
+      };
+      state.anonymizePage = 0;
+      elements.anonymizeConfirmed.checked = false;
+      renderAnonymizationPreview();
+      setResultState("success");
+      elements.resultStatus.textContent =
+        "Analisi completata. Rivedi le proposte e conferma prima di creare il PDF.";
+      elements.resultError.textContent = "";
+      elements.anonymizePreview.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) {
+      setResultState("error");
+      elements.resultStatus.textContent = "";
+      elements.resultError.textContent =
+        "Non è stato possibile analizzare il PDF. Verifica la connessione e riprova.";
+    } finally {
+      state.busy = false;
+      elements.progress.hidden = true;
+      updateControls();
+      renderFiles();
+    }
+  }
+
+  function hasCurrentAnonymizationPreview() {
+    return state.anonymizePreview !== null &&
+      state.files.length === 1 &&
+      state.anonymizePreview.fileKey === fileKey(state.files[0]);
+  }
+
+  function invalidateAnonymizationPreview() {
+    if (!state.anonymizePreview) return;
+    state.anonymizePreview = null;
+    elements.anonymizePreview.hidden = true;
+    elements.anonymizeConfirmed.checked = false;
+    clearResult();
+    updateControls();
+  }
+
+  function renderAnonymizationPreview() {
+    const preview = state.anonymizePreview;
+    if (!preview) return;
+    elements.anonymizePreview.hidden = false;
+    elements.anonymizePageSelect.replaceChildren();
+    preview.pages.forEach((_page, index) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = String(index + 1);
+      elements.anonymizePageSelect.append(option);
+    });
+    elements.anonymizePageSelect.value = String(state.anonymizePage);
+    elements.anonymizePageSelect.disabled = preview.pages.length < 2;
+    elements.anonymizePrevious.disabled = state.anonymizePage <= 0;
+    elements.anonymizeNext.disabled = state.anonymizePage >= preview.pages.length - 1;
+    elements.anonymizeSummary.textContent =
+      preview.suggestions.length + " corrispondenze proposte · " +
+      preview.manualAreas.length + " aree manuali";
+    elements.anonymizeNoText.hidden = preview.hasExtractableText;
+
+    elements.anonymizeSuggestions.replaceChildren();
+    if (preview.suggestions.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "anonymize-empty";
+      empty.textContent = "Nessuna corrispondenza trovata. Puoi comunque selezionare aree nel documento.";
+      elements.anonymizeSuggestions.append(empty);
+    } else {
+      preview.suggestions.forEach((suggestion, index) => {
+        const label = document.createElement("label");
+        label.className = "anonymize-suggestion";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = suggestion.selected;
+        checkbox.addEventListener("change", () => {
+          suggestion.selected = checkbox.checked;
+          elements.anonymizeConfirmed.checked = false;
+          renderAnonymizationPage();
+          updateControls();
+        });
+        const details = document.createElement("span");
+        const category = document.createElement("strong");
+        category.textContent = ANONYMIZE_CATEGORY_LABELS[suggestion.category] ||
+          suggestion.category;
+        const matchedText = document.createElement("small");
+        matchedText.textContent = "“" + suggestion.text + "” · pagina " + (suggestion.page + 1);
+        details.append(category, matchedText);
+        label.append(checkbox, details);
+        elements.anonymizeSuggestions.append(label);
+      });
+    }
+
+    elements.anonymizeManualAreas.replaceChildren();
+    if (preview.manualAreas.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "anonymize-empty";
+      empty.textContent = "Nessuna area aggiunta.";
+      elements.anonymizeManualAreas.append(empty);
+    } else {
+      preview.manualAreas.forEach((area, index) => {
+        const item = document.createElement("div");
+        item.className = "anonymize-manual-item";
+        const description = document.createElement("span");
+        description.textContent = "Area " + (index + 1) + " · pagina " + (area.page + 1);
+        const remove = document.createElement("button");
+        remove.className = "button button-quiet";
+        remove.type = "button";
+        remove.textContent = "Rimuovi";
+        remove.setAttribute("aria-label", "Rimuovi area " + (index + 1));
+        remove.addEventListener("click", () => {
+          preview.manualAreas.splice(index, 1);
+          elements.anonymizeConfirmed.checked = false;
+          renderAnonymizationPreview();
+          updateControls();
+        });
+        item.append(description, remove);
+        elements.anonymizeManualAreas.append(item);
+      });
+    }
+    renderAnonymizationPage();
+  }
+
+  function renderAnonymizationPage() {
+    const preview = state.anonymizePreview;
+    if (!preview || !preview.pages[state.anonymizePage]) return;
+    const page = preview.pages[state.anonymizePage];
+    const layer = document.createElement("div");
+    layer.className = "anonymize-page-layer";
+    const image = document.createElement("img");
+    image.alt = "Anteprima della pagina " + (state.anonymizePage + 1);
+    image.src = "data:image/png;base64," + page.image;
+    image.width = page.width;
+    image.height = page.height;
+    const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    overlay.setAttribute("viewBox", "0 0 " + page.width + " " + page.height);
+    overlay.setAttribute("aria-label", "Selezione delle aree da oscurare");
+    overlay.style.pointerEvents = "all";
+
+    const addOverlay = (area, className) => {
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", String(area.x0 * page.width));
+      rect.setAttribute("y", String(area.y0 * page.height));
+      rect.setAttribute("width", String((area.x1 - area.x0) * page.width));
+      rect.setAttribute("height", String((area.y1 - area.y0) * page.height));
+      rect.setAttribute("class", className);
+      overlay.append(rect);
+    };
+    preview.suggestions.forEach((suggestion) => {
+      if (suggestion.page === state.anonymizePage && suggestion.selected) {
+        addOverlay(suggestion, "anonymize-suggested-area");
+      }
+    });
+    preview.manualAreas.forEach((area) => {
+      if (area.page === state.anonymizePage) addOverlay(area, "anonymize-manual-area");
+    });
+
+    let dragStart = null;
+    let dragRect = null;
+    const pointFor = (event) => {
+      const bounds = overlay.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(page.width, (event.clientX - bounds.left) * page.width / bounds.width)),
+        y: Math.max(0, Math.min(page.height, (event.clientY - bounds.top) * page.height / bounds.height))
+      };
+    };
+    overlay.addEventListener("pointerdown", (event) => {
+      if (state.busy || event.button !== 0) return;
+      dragStart = pointFor(event);
+      dragRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      dragRect.setAttribute("class", "anonymize-drawing-area");
+      overlay.append(dragRect);
+      overlay.setPointerCapture(event.pointerId);
+    });
+    overlay.addEventListener("pointermove", (event) => {
+      if (!dragStart || !dragRect) return;
+      const point = pointFor(event);
+      dragRect.setAttribute("x", String(Math.min(dragStart.x, point.x)));
+      dragRect.setAttribute("y", String(Math.min(dragStart.y, point.y)));
+      dragRect.setAttribute("width", String(Math.abs(point.x - dragStart.x)));
+      dragRect.setAttribute("height", String(Math.abs(point.y - dragStart.y)));
+    });
+    overlay.addEventListener("pointerup", (event) => {
+      if (!dragStart) return;
+      const end = pointFor(event);
+      if (Math.abs(end.x - dragStart.x) > 4 && Math.abs(end.y - dragStart.y) > 4) {
+        preview.manualAreas.push({
+          page: state.anonymizePage,
+          x0: Math.min(dragStart.x, end.x) / page.width,
+          y0: Math.min(dragStart.y, end.y) / page.height,
+          x1: Math.max(dragStart.x, end.x) / page.width,
+          y1: Math.max(dragStart.y, end.y) / page.height
+        });
+        elements.anonymizeConfirmed.checked = false;
+        renderAnonymizationPreview();
+        updateControls();
+      } else if (dragRect) {
+        dragRect.remove();
+      }
+      dragStart = null;
+      dragRect = null;
+    });
+    layer.append(image, overlay);
+    elements.anonymizePageView.replaceChildren(layer);
+  }
+
+  function changeAnonymizationPage(delta) {
+    const preview = state.anonymizePreview;
+    if (!preview) return;
+    state.anonymizePage = Math.max(
+      0,
+      Math.min(preview.pages.length - 1, state.anonymizePage + delta)
+    );
+    renderAnonymizationPreview();
+  }
+
   function buildRequest(operation) {
     const formData = new FormData();
-    const fileField = operation === "split" || operation === "extract" ||
+    const fileField = operation === "split" || operation === "extract" || operation === "anonymize" ||
       operation === "documents-to-pdf" || operation === "docx-to-pdf"
       ? "file"
       : operation === "images-to-pdf" ? "images" : "files";
@@ -549,6 +859,12 @@
       document.querySelectorAll('input[name="permission"]').forEach((checkbox) => {
         formData.append(checkbox.value, String(checkbox.checked));
       });
+    } else if (operation === "anonymize") {
+      const areas = [
+        ...state.anonymizePreview.suggestions.filter((suggestion) => suggestion.selected),
+        ...state.anonymizePreview.manualAreas
+      ].map(({ page, x0, y0, x1, y1 }) => ({ page, x0, y0, x1, y1 }));
+      formData.append("areas", JSON.stringify(areas));
     }
     return formData;
   }
@@ -591,7 +907,9 @@
       elements.resultError.textContent = operation === "images-to-pdf" &&
         message.toLowerCase().includes("pixel")
         ? "Le immagini superano il limite di dimensioni supportato. Riduci la risoluzione o seleziona meno immagini."
-        : "La richiesta supera il limite di 100 MiB. Seleziona meno file o documenti più piccoli.";
+        : operation === "anonymize"
+          ? message || "Il PDF supera i limiti di pagine o dimensioni per l'anteprima."
+          : "La richiesta supera il limite di 100 MiB. Seleziona meno file o documenti più piccoli.";
     } else if (response.status === 415) {
       elements.resultError.textContent = operation === "images-to-pdf"
         ? "Seleziona solo immagini JPG o PNG."

@@ -102,6 +102,13 @@
           </span>
         </label>
         <label class="operation-option">
+          <input type="radio" name="operation" value="anonymize">
+          <span class="operation-content">
+            <svg class="operation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3.75h8l4 4v12.5H6z"/><path d="M14 3.75v4h4M8 13h8M8 16h8"/></svg>
+            <span class="operation-label">Anonimizza</span>
+          </span>
+        </label>
+        <label class="operation-option">
           <input type="radio" name="operation" value="images-to-pdf">
           <span class="operation-content">
             <svg class="operation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="m5 17 5-5 3 3 2-2 4 4"/></svg>
@@ -215,6 +222,49 @@
       <section class="settings-panel" data-panel="extract" aria-labelledby="extract-heading" hidden>
         <h3 id="extract-heading">Estrai il testo</h3>
         <p>Il testo trovato nel PDF verrà scaricato come file UTF-8 con estensione <code>.txt</code>.</p>
+      </section>
+
+      <section class="settings-panel" data-panel="anonymize" aria-labelledby="anonymize-heading" hidden>
+        <h3 id="anonymize-heading">Anonimizza il PDF</h3>
+        <p>Seleziona un solo PDF. Le corrispondenze automatiche sono proposte da rivedere; il testo nelle aree confermate viene rimosso, non soltanto coperto.</p>
+        <fieldset class="permissions anonymize-categories">
+          <legend>Dati da cercare nel testo</legend>
+          <label class="checkbox-row"><input type="checkbox" name="anonymize-category" value="email" checked><span>Indirizzi email</span></label>
+          <label class="checkbox-row"><input type="checkbox" name="anonymize-category" value="telefono" checked><span>Numeri di telefono</span></label>
+          <label class="checkbox-row"><input type="checkbox" name="anonymize-category" value="codice-fiscale" checked><span>Codici fiscali italiani</span></label>
+          <label class="checkbox-row"><input type="checkbox" name="anonymize-category" value="partita-iva" checked><span>Partite IVA italiane</span></label>
+        </fieldset>
+        <div class="field">
+          <label for="anonymize-terms">Altre parole o frasi da cercare <span class="optional">(facoltativo)</span></label>
+          <textarea id="anonymize-terms" rows="3" maxlength="10000" placeholder="Una frase per riga"></textarea>
+          <small class="field-help">La ricerca automatica non trova dati in immagini o scansioni prive di testo riconosciuto.</small>
+        </div>
+        <div id="anonymize-preview" class="anonymize-preview" hidden>
+          <div class="anonymize-preview-heading">
+            <h4>Rivedi le aree da oscurare</h4>
+            <p id="anonymize-summary" aria-live="polite"></p>
+          </div>
+          <p id="anonymize-no-text" class="anonymize-no-text" role="note" hidden>
+            Il PDF è valido e visualizzabile, ma non contiene testo estraibile. Potrebbe essere una scansione: senza OCR non è possibile trovare dati automaticamente. Puoi comunque trascinare sulle aree da oscurare.
+          </p>
+          <div class="page-navigation">
+            <button id="anonymize-page-previous" class="button button-quiet" type="button" aria-label="Pagina precedente">←</button>
+            <label for="anonymize-page-select">Pagina</label>
+            <select id="anonymize-page-select"></select>
+            <button id="anonymize-page-next" class="button button-quiet" type="button" aria-label="Pagina successiva">→</button>
+          </div>
+          <p class="panel-note">Trascina sul PDF per aggiungere altre aree. Le caselle rosse sono proposte automatiche; seleziona solo quelle da rimuovere.</p>
+          <div id="anonymize-page-view" class="anonymize-page-view"></div>
+          <h5>Corrispondenze proposte</h5>
+          <div id="anonymize-suggestions" class="anonymize-suggestions"></div>
+          <h5>Aree aggiunte manualmente</h5>
+          <div id="anonymize-manual-areas" class="anonymize-manual-areas"></div>
+          <label class="checkbox-row anonymize-confirm-row">
+            <input id="anonymize-confirmed" type="checkbox">
+            <span>Ho rivisto le aree selezionate e confermo di volerle rimuovere definitivamente.</span>
+          </label>
+        </div>
+        <p class="panel-note">Il rilevamento non garantisce di trovare tutti i dati personali. I file originali restano invariati; metadati, allegati e collegamenti del PDF anonimizzato vengono rimossi.</p>
       </section>
 
       <section class="settings-panel" data-panel="images-to-pdf" aria-labelledby="images-to-pdf-heading" hidden>

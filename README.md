@@ -16,6 +16,15 @@ download. Image conversion creates one A4 page per image in the selected order.
 Original files are not modified. Requests are limited to 100 MiB and operations
 accept up to 32 files.
 
+The anonymization tool removes PDF metadata, embedded attachments, links, and
+document scripts; it can also propose email addresses, phone numbers, Italian
+tax codes, VAT numbers, and custom text for review. Users can add areas by
+dragging over the page preview. Confirmed areas are irreversibly redacted from
+the PDF content. Detection is not exhaustive and does not perform OCR on
+scanned pages; review every page and the downloaded result before sharing it.
+PyMuPDF is dual-licensed under AGPL or a commercial license. Verify that your
+chosen license permits your deployment and that you meet its obligations.
+
 ## Run locally
 
 Requires Python 3.10 or later.

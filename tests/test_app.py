@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pymupdf as fitz
 import app as pdf4um_app
 from PIL import Image
 from docx.shared import Pt, RGBColor
@@ -21,6 +22,19 @@ def make_pdf(page_count: int = 1) -> bytes:
         writer.add_blank_page(width=300, height=400)
     output = io.BytesIO()
     writer.write(output)
+    return output.getvalue()
+
+
+def make_anonymization_pdf() -> bytes:
+    document = fitz.open()
+    page = document.new_page(width=400, height=220)
+    page.insert_text((40, 60), "Email mario@example.com")
+    page.insert_text((40, 100), "CF RSSMRA85T10A562S")
+    page.insert_text((40, 140), "P.IVA 12345678901")
+    document.set_metadata({"author": "Mario Rossi", "title": "Documento privato"})
+    output = io.BytesIO()
+    document.save(output)
+    document.close()
     return output.getvalue()
 
 
@@ -164,6 +178,7 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertNotIn(b"Servizi", response.data)
         self.assertNotIn(b"Contattaci", response.data)
         self.assertIn(b'value="images-to-pdf"', response.data)
+        self.assertIn(b'value="anonymize"', response.data)
         self.assertIn(b"Converti immagini in PDF", response.data)
         self.assertIn(b'value="documents-to-pdf"', response.data)
         self.assertIn(b'value="docx-to-pdf"', response.data)
@@ -504,6 +519,140 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertEqual(extracted.mimetype, "text/plain")
         self.assertIn("Notes_text.txt", extracted.headers["Content-Disposition"])
         self.assertIn(b"EXTRACTED TEXT", extracted.data)
+
+    def test_anonymization_preview_and_irreversible_redaction(self):
+        source = make_anonymization_pdf()
+        preview = self.post(
+            "/api/anonymize-preview",
+            {
+                "file": self.upload("Private.pdf", source),
+                "categories": json.dumps(["email", "codice-fiscale", "partita-iva"]),
+                "terms": "Mario",
+            },
+        )
+        self.assertEqual(preview.status_code, 200)
+        result = json.loads(preview.data)
+        self.assertEqual(len(result["pages"]), 1)
+        self.assertTrue(result["pages"][0]["image"])
+        self.assertTrue(result["hasExtractableText"])
+        categories = {suggestion["category"] for suggestion in result["suggestions"]}
+        self.assertTrue({"email", "codice-fiscale", "partita-iva", "testo"}.issubset(categories))
+        email = next(item for item in result["suggestions"] if item["category"] == "email")
+
+        anonymized = self.post(
+            "/api/anonymize",
+            {
+                "file": self.upload("Private.pdf", source),
+                "areas": json.dumps([{
+                    key: email[key] for key in ("page", "x0", "y0", "x1", "y1")
+                }]),
+            },
+        )
+        self.assertEqual(anonymized.status_code, 200)
+        self.assertEqual(anonymized.mimetype, "application/pdf")
+        document = fitz.open(stream=anonymized.data, filetype="pdf")
+        self.addCleanup(document.close)
+        text = document[0].get_text()
+        self.assertNotIn("mario@example.com", text)
+        self.assertIn("RSSMRA85T10A562S", text)
+        self.assertEqual(document.metadata["author"], "")
+        self.assertEqual(document.metadata["title"], "")
+        self.assertEqual(document.embfile_count(), 0)
+
+        metadata_only = self.post(
+            "/api/anonymize",
+            {
+                "file": self.upload("Private.pdf", source),
+                "areas": "[]",
+            },
+        )
+        self.assertEqual(metadata_only.status_code, 200)
+        metadata_document = fitz.open(stream=metadata_only.data, filetype="pdf")
+        self.addCleanup(metadata_document.close)
+        self.assertEqual(metadata_document.metadata["author"], "")
+        self.assertIn("mario@example.com", metadata_document[0].get_text())
+
+    def test_anonymization_preview_identifies_scanned_pdf_without_text(self):
+        image = Image.new("RGB", (240, 120), "white")
+        image_bytes = io.BytesIO()
+        image.save(image_bytes, format="PNG")
+        document = fitz.open()
+        page = document.new_page(width=400, height=220)
+        page.insert_image(page.rect, stream=image_bytes.getvalue())
+        source = io.BytesIO()
+        document.save(source)
+        document.close()
+
+        response = self.post(
+            "/api/anonymize-preview",
+            {
+                "file": self.upload("Scanned.pdf", source.getvalue()),
+                "categories": json.dumps(["email", "telefono"]),
+                "terms": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = json.loads(response.data)
+        self.assertFalse(result["hasExtractableText"])
+        self.assertEqual(result["suggestions"], [])
+        self.assertTrue(result["pages"][0]["image"])
+
+    def test_anonymization_rejects_invalid_categories_and_redaction_areas(self):
+        invalid_categories = self.post(
+            "/api/anonymize-preview",
+            {
+                "file": self.upload("Private.pdf", make_anonymization_pdf()),
+                "categories": json.dumps(["unknown"]),
+                "terms": "",
+            },
+        )
+        self.assertEqual(invalid_categories.status_code, 400)
+
+        invalid_area = self.post(
+            "/api/anonymize",
+            {
+                "file": self.upload("Private.pdf", make_anonymization_pdf()),
+                "areas": json.dumps([{
+                    "page": 2, "x0": 0.1, "y0": 0.1, "x1": 0.3, "y1": 0.3,
+                }]),
+            },
+        )
+        self.assertEqual(invalid_area.status_code, 400)
+
+    def test_anonymization_redacts_manual_areas_on_rotated_pages(self):
+        source_document = fitz.open()
+        page = source_document.new_page(width=400, height=220)
+        page.insert_text((40, 80), "REMOVE-ME")
+        page.set_rotation(90)
+        source_stream = io.BytesIO()
+        source_document.save(source_stream)
+        source_document.close()
+        source = source_stream.getvalue()
+
+        preview = self.post(
+            "/api/anonymize-preview",
+            {
+                "file": self.upload("Rotated.pdf", source),
+                "categories": "[]",
+                "terms": "REMOVE-ME",
+            },
+        )
+        self.assertEqual(preview.status_code, 200)
+        area = json.loads(preview.data)["suggestions"][0]
+        anonymized = self.post(
+            "/api/anonymize",
+            {
+                "file": self.upload("Rotated.pdf", source),
+                "areas": json.dumps([{
+                    key: area[key] for key in ("page", "x0", "y0", "x1", "y1")
+                }]),
+            },
+        )
+        self.assertEqual(anonymized.status_code, 200)
+        output_document = fitz.open(stream=anonymized.data, filetype="pdf")
+        self.addCleanup(output_document.close)
+        self.assertNotIn("REMOVE-ME", output_document[0].get_text())
 
     def test_rejects_invalid_uploads_and_unknown_routes_as_json(self):
         too_few = self.post(

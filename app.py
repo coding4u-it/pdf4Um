@@ -1,7 +1,9 @@
 import base64
 from html.parser import HTMLParser
+import json
 import io
 import logging
+import math
 import os
 import re
 import secrets
@@ -21,6 +23,7 @@ from xml.sax.saxutils import escape
 
 import mammoth
 import reportlab
+import pymupdf as fitz
 from docx import Document
 from docx.text.paragraph import Paragraph as DocxParagraph
 from xhtml2pdf import pisa
@@ -37,6 +40,10 @@ MAX_REQUEST_BYTES = 100 * 1024 * 1024
 MAX_FILES = 32
 MAX_IMAGE_PIXELS = 40_000_000
 MAX_TOTAL_IMAGE_PIXELS = 100_000_000
+MAX_ANONYMIZE_PAGES = 100
+MAX_ANONYMIZE_PREVIEW_PIXELS = 12_000_000
+MAX_REDACTION_AREAS = 500
+MAX_ANONYMIZE_TERMS = 50
 MAX_DOCUMENT_XML_BYTES = 20 * 1024 * 1024
 MAX_DOCUMENT_ARCHIVE_ENTRIES = 10_000
 A4_WIDTH = 595.275590551
@@ -57,6 +64,17 @@ ODT_STYLE_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:style:1.0}"
 ODT_FO_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0}"
 
 RANDOM_ALPHABET = "[]()abcdefghijklmnopqrstuvwxyz#.&0123456789$£€,ABCDEFGHIJKLMNOPQRSTUVWXYZ@"
+ANONYMIZE_PATTERNS = {
+    "email": re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE),
+    "telefono": re.compile(
+        r"(?<!\w)(?:\+?39[\s().-]*)?(?:0\d{1,4}[\s().-]*)?\d(?:[\s().-]*\d){7,11}(?!\w)"
+    ),
+    "codice-fiscale": re.compile(
+        r"(?<![A-Z0-9])[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z](?![A-Z0-9])",
+        re.IGNORECASE,
+    ),
+    "partita-iva": re.compile(r"(?<!\d)(?:IT)?\d{11}(?!\d)", re.IGNORECASE),
+}
 APP_DIRECTORY = Path(__file__).resolve().parent
 SOURCE_WEB_DIRECTORY = APP_DIRECTORY / "src" / "main" / "resources" / "web"
 DEPLOY_WEB_DIRECTORY = APP_DIRECTORY / "pdf4um-web"
@@ -146,7 +164,7 @@ def create_app() -> Flask:
     def api(operation: str):
         if operation not in {
             "split", "merge", "rename", "encrypt", "extract-text", "images-to-pdf",
-            "documents-to-pdf",
+            "documents-to-pdf", "anonymize-preview", "anonymize",
         }:
             abort(404)
         if request.method != "POST":
@@ -158,6 +176,8 @@ def create_app() -> Flask:
         except Exception:
             _remove_workspace(workspace)
             raise
+        if operation == "anonymize-preview":
+            _remove_workspace(workspace)
         return response
 
     return app
@@ -186,6 +206,19 @@ def _static_file(name: str, mimetype: str = "text/html; charset=utf-8"):
 def _run_operation(operation: str, workspace: Path) -> Response:
     input_directory = workspace / "input"
     input_directory.mkdir()
+
+    if operation == "anonymize-preview":
+        uploads = _save_uploads("file", 1, 1, input_directory)
+        categories = _anonymize_categories(_text("categories", "[]"))
+        terms = _anonymize_terms(_text("terms", ""))
+        return jsonify(_anonymization_preview(uploads[0], categories, terms))
+
+    if operation == "anonymize":
+        uploads = _save_uploads("file", 1, 1, input_directory)
+        areas = _redaction_areas(_text("areas", ""))
+        output = workspace / f"{uploads[0].stem}_anonimizzato.pdf"
+        _anonymize_pdf(uploads[0], output, areas)
+        return _file_response(output, workspace, "application/pdf")
 
     if operation == "split":
         uploads = _save_uploads("file", 1, 1, input_directory)
@@ -1047,6 +1080,305 @@ def _readable_pdfs(files: list[Path]) -> list[PdfReader]:
         except (OSError, PdfReadError, ValueError) as error:
             raise ApiProblem(422, "One or more PDFs are unreadable or password protected.") from error
     return readers
+
+
+def _anonymize_categories(raw: str) -> list[str]:
+    try:
+        categories = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ApiProblem(400, "Invalid anonymization categories.") from error
+    if not isinstance(categories, list) or any(
+        not isinstance(category, str) or category not in ANONYMIZE_PATTERNS
+        for category in categories
+    ):
+        raise ApiProblem(400, "Invalid anonymization categories.")
+    return list(dict.fromkeys(categories))
+
+
+def _anonymize_terms(raw: str) -> list[str]:
+    terms = [term.strip() for term in raw.splitlines() if term.strip()]
+    if len(terms) > MAX_ANONYMIZE_TERMS or any(len(term) > 200 for term in terms):
+        raise ApiProblem(400, "Use at most 50 search terms of up to 200 characters each.")
+    return list(dict.fromkeys(terms))
+
+
+def _redaction_areas(raw: str) -> list[dict[str, float | int]]:
+    try:
+        areas = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ApiProblem(400, "Invalid redaction areas.") from error
+    if not isinstance(areas, list) or len(areas) > MAX_REDACTION_AREAS:
+        raise ApiProblem(400, "Select between zero and 500 redaction areas.")
+
+    normalized = []
+    for area in areas:
+        if not isinstance(area, dict):
+            raise ApiProblem(400, "Invalid redaction area.")
+        page = area.get("page")
+        coordinates = [area.get(key) for key in ("x0", "y0", "x1", "y1")]
+        if (
+            not isinstance(page, int)
+            or isinstance(page, bool)
+            or any(
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or isinstance(value, float) and not math.isfinite(value)
+                or value < 0
+                or value > 1
+                for value in coordinates
+            )
+        ):
+            raise ApiProblem(400, "Invalid redaction area coordinates.")
+        x0, y0, x1, y1 = coordinates
+        if x0 >= x1 or y0 >= y1:
+            raise ApiProblem(400, "Redaction areas must have a positive size.")
+        normalized.append({"page": page, "x0": x0, "y0": y0, "x1": x1, "y1": y1})
+    return normalized
+
+
+def _open_anonymization_pdf(path: Path):
+    try:
+        document = fitz.open(path)
+        if document.needs_pass:
+            document.close()
+            raise ApiProblem(422, "Password-protected PDFs cannot be anonymized.")
+        if document.page_count == 0:
+            document.close()
+            raise ApiProblem(422, "The PDF has no pages.")
+        return document
+    except ApiProblem:
+        raise
+    except (fitz.FileDataError, RuntimeError, ValueError, OSError) as error:
+        raise ApiProblem(422, "The PDF is unreadable or password protected.") from error
+
+
+def _anonymization_preview(
+    source: Path,
+    categories: list[str],
+    terms: list[str],
+) -> dict:
+    document = _open_anonymization_pdf(source)
+    try:
+        if document.page_count > MAX_ANONYMIZE_PAGES:
+            raise ApiProblem(
+                413,
+                f"Anonymization preview supports up to {MAX_ANONYMIZE_PAGES} pages.",
+            )
+
+        pages = []
+        suggestions = []
+        has_extractable_text = False
+        remaining_pixels = MAX_ANONYMIZE_PREVIEW_PIXELS
+        for page_number, page in enumerate(document):
+            bounds = page.rect
+            if bounds.width <= 0 or bounds.height <= 0:
+                raise ApiProblem(422, "The PDF contains a page with invalid dimensions.")
+            if remaining_pixels <= 0:
+                raise ApiProblem(
+                    413,
+                    "The document is too large to preview safely for anonymization.",
+                )
+            scale = min(
+                1.0,
+                1200 / max(bounds.width, bounds.height),
+                0.99 * math.sqrt(remaining_pixels / (bounds.width * bounds.height)),
+            )
+            if scale < 0.1:
+                raise ApiProblem(
+                    413,
+                    "The document is too large to preview safely for anonymization.",
+                )
+            pixmap = page.get_pixmap(
+                matrix=fitz.Matrix(scale, scale),
+                colorspace=fitz.csGRAY,
+                alpha=False,
+                annots=False,
+            )
+            page_pixels = pixmap.width * pixmap.height
+            remaining_pixels -= page_pixels
+            pages.append({
+                "width": pixmap.width,
+                "height": pixmap.height,
+                "image": base64.b64encode(pixmap.tobytes("png")).decode("ascii"),
+            })
+
+            has_extractable_text = has_extractable_text or bool(page.get_text().strip())
+            if categories:
+                suggestions.extend(
+                    _find_automatic_redactions(page, page_number, categories)
+                )
+            if terms:
+                suggestions.extend(_find_term_redactions(page, page_number, terms))
+            if len(suggestions) > MAX_REDACTION_AREAS:
+                raise ApiProblem(
+                    413,
+                    "Too many matches were found. Narrow the search and analyze again.",
+                )
+        return {
+            "pages": pages,
+            "suggestions": suggestions,
+            "hasExtractableText": has_extractable_text,
+        }
+    except ApiProblem:
+        raise
+    except (fitz.FileDataError, RuntimeError, ValueError, OSError) as error:
+        raise ApiProblem(422, "The PDF could not be analyzed for anonymization.") from error
+    finally:
+        document.close()
+
+
+def _find_automatic_redactions(
+    page: fitz.Page,
+    page_number: int,
+    categories: list[str],
+) -> list[dict]:
+    words = page.get_text("words", sort=True)
+    lines: dict[tuple[int, int], list[tuple]] = {}
+    for word in words:
+        lines.setdefault((word[5], word[6]), []).append(word)
+
+    suggestions = []
+    page_bounds = page.rect
+    for line_words in lines.values():
+        line_words.sort(key=lambda word: word[7])
+        parts = []
+        word_ranges = []
+        offset = 0
+        for word in line_words:
+            text = word[4]
+            if not text:
+                continue
+            if parts:
+                parts.append(" ")
+                offset += 1
+            start = offset
+            parts.append(text)
+            offset += len(text)
+            word_ranges.append((start, offset, word))
+        line_text = "".join(parts)
+        for category in categories:
+            for match in ANONYMIZE_PATTERNS[category].finditer(line_text):
+                matched_words = [
+                    word for start, end, word in word_ranges
+                    if start < match.end() and end > match.start()
+                ]
+                if matched_words:
+                    rect = _display_rect(page, _words_rect(matched_words))
+                    suggestion = _suggestion(
+                        page_number, page_bounds, rect, category, match.group(0)
+                    )
+                    if suggestion:
+                        suggestions.append(suggestion)
+    return suggestions
+
+
+def _find_term_redactions(
+    page: fitz.Page,
+    page_number: int,
+    terms: list[str],
+) -> list[dict]:
+    suggestions = []
+    page_bounds = page.rect
+    for term in terms:
+        for rect in page.search_for(term, quads=False):
+            suggestion = _suggestion(
+                page_number, page_bounds, _display_rect(page, rect), "testo", term
+            )
+            if suggestion:
+                suggestions.append(suggestion)
+    return suggestions
+
+
+def _words_rect(words: list[tuple]) -> fitz.Rect:
+    return fitz.Rect(
+        min(word[0] for word in words),
+        min(word[1] for word in words),
+        max(word[2] for word in words),
+        max(word[3] for word in words),
+    )
+
+
+def _display_rect(page: fitz.Page, rect: fitz.Rect) -> fitz.Rect:
+    return rect * page.rotation_matrix
+
+
+def _suggestion(
+    page_number: int,
+    page_bounds: fitz.Rect,
+    rect: fitz.Rect,
+    category: str,
+    text: str,
+) -> dict:
+    x0 = max(0.0, min(1.0, rect.x0 / page_bounds.width))
+    y0 = max(0.0, min(1.0, rect.y0 / page_bounds.height))
+    x1 = max(0.0, min(1.0, rect.x1 / page_bounds.width))
+    y1 = max(0.0, min(1.0, rect.y1 / page_bounds.height))
+    if x0 >= x1 or y0 >= y1:
+        return {}
+    return {
+        "page": page_number,
+        "x0": x0,
+        "y0": y0,
+        "x1": x1,
+        "y1": y1,
+        "category": category,
+        "text": text,
+    }
+
+
+def _anonymize_pdf(
+    source: Path,
+    output: Path,
+    areas: list[dict[str, float | int]],
+) -> None:
+    document = _open_anonymization_pdf(source)
+    try:
+        if any(area["page"] >= document.page_count for area in areas):
+            raise ApiProblem(400, "A redaction area refers to a page outside the PDF.")
+
+        for area in areas:
+            page = document[area["page"]]
+            bounds = page.rect
+            display_rect = fitz.Rect(
+                area["x0"] * bounds.width,
+                area["y0"] * bounds.height,
+                area["x1"] * bounds.width,
+                area["y1"] * bounds.height,
+            )
+            page_rect = display_rect * page.derotation_matrix
+            page.add_redact_annot(page_rect, fill=(0, 0, 0), cross_out=False)
+
+        for page in document:
+            if page.first_annot:
+                page.apply_redactions(images=2, graphics=1, text=0)
+            for annotation in list(page.annots() or []):
+                page.delete_annot(annotation)
+
+        metadata = {key: "" for key in document.metadata}
+        document.set_metadata(metadata)
+        document.set_xml_metadata("")
+        document.scrub(
+            attached_files=True,
+            clean_pages=True,
+            embedded_files=True,
+            hidden_text=True,
+            javascript=True,
+            metadata=True,
+            redactions=True,
+            remove_links=True,
+            reset_fields=True,
+            reset_responses=True,
+            thumbnails=True,
+            xml_metadata=True,
+        )
+        document.save(output, garbage=4, deflate=True, clean=True)
+    except ApiProblem:
+        raise
+    except (fitz.FileDataError, RuntimeError, ValueError, OSError) as error:
+        output.unlink(missing_ok=True)
+        raise ApiProblem(422, "The PDF could not be anonymized safely.") from error
+    finally:
+        document.close()
 
 
 def _text(name: str, default: str) -> str:
