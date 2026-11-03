@@ -64,17 +64,41 @@ ODT_STYLE_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:style:1.0}"
 ODT_FO_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0}"
 
 RANDOM_ALPHABET = "[]()abcdefghijklmnopqrstuvwxyz#.&0123456789$£€,ABCDEFGHIJKLMNOPQRSTUVWXYZ@"
+PHONE_CANDIDATE_PATTERN = re.compile(
+    r"(?<![\w\d])(?:(?:\+|00)\s*39[\s().-]*)?"
+    r"(?:\(?0\d{1,3}\)?|\(?3\d{2}\)?)(?:[\s().-]*\d){6,8}(?!\w)"
+)
+PHONE_DATE_PATTERN = re.compile(
+    r"(?:0?[1-9]|[12]\d|3[01])[./-](?:0?[1-9]|1[0-2])[./-](?:\d{2}|\d{4})"
+)
 ANONYMIZE_PATTERNS = {
     "email": re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE),
-    "telefono": re.compile(
-        r"(?<!\w)(?:\+?39[\s().-]*)?(?:0\d{1,4}[\s().-]*)?\d(?:[\s().-]*\d){7,11}(?!\w)"
-    ),
     "codice-fiscale": re.compile(
         r"(?<![A-Z0-9])[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z](?![A-Z0-9])",
         re.IGNORECASE,
     ),
     "partita-iva": re.compile(r"(?<!\d)(?:IT)?\d{11}(?!\d)", re.IGNORECASE),
 }
+ANONYMIZE_CATEGORIES = {*ANONYMIZE_PATTERNS, "telefono", "nomi"}
+ITALIAN_GIVEN_NAMES = frozenset(
+    """
+    alberto alessandra alessandro alessia alessio alice alicia amedeo andrea
+    angela angelica angelo anna annalisa annamaria antonella antonio arianna
+    aurora barbara beatrice benedetta benedetto bianca bruno camilla carla
+    carlo carmela carmen carolina caterina celeste chiara christian cinzia
+    claudio cristina daniele daniela dario davide diego domenico edoardo elena
+    eleonora elisa elisabetta emanuele emanuela emma enrico erica fabio
+    fabrizio federica federico ferdinando filippo francesca francesco franco
+    gabriele gabriella gaia giacomo giorgia giorgio giovanna giovanni giulia
+    giuliana giulio giuseppe gloria greta ilaria irene isabella jacopo laura
+    leonardo letizia lorenzo luca lucia luigi marco maria mariana marika mario
+    marta martina massimo matteo mattia maurizio michele monica nicola nicole
+    nicolo noemi paola paolo patrizia pietro raffaele riccardo roberto rosa
+    rosalba samuele sara serena sergio silvia simona simone sofia stefania
+    stefano tommaso valentina valeria valentino vanessa vincenzo viola vittoria
+    """.split()
+)
+NAME_CONNECTORS = frozenset({"da", "de", "del", "della", "di", "van", "von"})
 APP_DIRECTORY = Path(__file__).resolve().parent
 SOURCE_WEB_DIRECTORY = APP_DIRECTORY / "src" / "main" / "resources" / "web"
 DEPLOY_WEB_DIRECTORY = APP_DIRECTORY / "pdf4um-web"
@@ -1088,7 +1112,7 @@ def _anonymize_categories(raw: str) -> list[str]:
     except json.JSONDecodeError as error:
         raise ApiProblem(400, "Invalid anonymization categories.") from error
     if not isinstance(categories, list) or any(
-        not isinstance(category, str) or category not in ANONYMIZE_PATTERNS
+        not isinstance(category, str) or category not in ANONYMIZE_CATEGORIES
         for category in categories
     ):
         raise ApiProblem(400, "Invalid anonymization categories.")
@@ -1257,7 +1281,14 @@ def _find_automatic_redactions(
             word_ranges.append((start, offset, word))
         line_text = "".join(parts)
         for category in categories:
-            for match in ANONYMIZE_PATTERNS[category].finditer(line_text):
+            if category == "telefono":
+                matches = _find_phone_matches(line_text)
+            elif category == "nomi":
+                suggestions.extend(_find_name_redactions(line_words, page_number, page))
+                continue
+            else:
+                matches = ANONYMIZE_PATTERNS[category].finditer(line_text)
+            for match in matches:
                 matched_words = [
                     word for start, end, word in word_ranges
                     if start < match.end() and end > match.start()
@@ -1270,6 +1301,85 @@ def _find_automatic_redactions(
                     if suggestion:
                         suggestions.append(suggestion)
     return suggestions
+
+
+def _find_phone_matches(line_text: str):
+    for match in PHONE_CANDIDATE_PATTERN.finditer(line_text):
+        value = match.group().strip()
+        if PHONE_DATE_PATTERN.fullmatch(value):
+            continue
+        digits = re.sub(r"\D", "", value)
+        if digits.startswith("0039"):
+            digits = digits[4:]
+        elif value.lstrip().startswith("+39"):
+            digits = digits[2:]
+        if (
+            digits.startswith("3") and len(digits) in {10, 11}
+            or digits.startswith("0") and len(digits) in {9, 10, 11}
+        ):
+            yield match
+
+
+def _find_name_redactions(
+    line_words: list[tuple],
+    page_number: int,
+    page: fitz.Page,
+) -> list[dict]:
+    suggestions = []
+    page_bounds = page.rect
+    index = 0
+    while index < len(line_words) - 1:
+        first_name = _name_token(line_words[index][4])
+        if (
+            not first_name
+            or first_name.casefold() not in ITALIAN_GIVEN_NAMES
+            or not _is_capitalized_name(line_words[index][4])
+        ):
+            index += 1
+            continue
+
+        end = index + 1
+        while (
+            end < len(line_words) - 1
+            and end - index < 3
+            and (middle_name := _name_token(line_words[end][4])) is not None
+            and middle_name.casefold() in ITALIAN_GIVEN_NAMES
+            and _is_capitalized_name(line_words[end][4])
+        ):
+            end += 1
+
+        surname = _name_token(line_words[end][4])
+        if (
+            surname
+            and surname.casefold() not in NAME_CONNECTORS
+            and _is_capitalized_name(line_words[end][4])
+        ):
+            text = " ".join(word[4] for word in line_words[index : end + 1])
+            suggestion = _suggestion(
+                page_number,
+                page_bounds,
+                _display_rect(page, _words_rect(line_words[index : end + 1])),
+                "nomi",
+                text,
+            )
+            if suggestion:
+                suggestions.append(suggestion)
+            index = end + 1
+        else:
+            index += 1
+    return suggestions
+
+
+def _name_token(value: str) -> str | None:
+    token = value.strip(".,;:()[]{}<>\"'’")
+    if token and all(character.isalpha() or character in {"'", "’", "-"} for character in token):
+        return token
+    return None
+
+
+def _is_capitalized_name(value: str) -> bool:
+    token = _name_token(value)
+    return bool(token and (token.isupper() or token[0].isupper()))
 
 
 def _find_term_redactions(

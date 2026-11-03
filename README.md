@@ -17,11 +17,15 @@ Original files are not modified. Requests are limited to 100 MiB and operations
 accept up to 32 files.
 
 The anonymization tool removes PDF metadata, embedded attachments, links, and
-document scripts; it can also propose email addresses, phone numbers, Italian
-tax codes, VAT numbers, and custom text for review. Users can add areas by
-dragging over the page preview. Confirmed areas are irreversibly redacted from
-the PDF content. Detection is not exhaustive and does not perform OCR on
-scanned pages; review every page and the downloaded result before sharing it.
+document scripts; it can also propose email addresses, phone numbers, common
+Italian first names with surnames, Italian tax codes, VAT numbers, and custom
+text for review. Phone matching uses Italian number prefixes and lengths to
+avoid treating dates and legal references as phone numbers. Name detection is
+heuristic and limited to a built-in list of common first names. Users can add
+areas by dragging over the page preview. Confirmed areas are irreversibly
+redacted from the PDF content. Detection is not exhaustive and does not perform
+OCR on scanned pages; review every page and the downloaded result before
+sharing it.
 PyMuPDF is dual-licensed under AGPL or a commercial license. Verify that your
 chosen license permits your deployment and that you meet its obligations.
 

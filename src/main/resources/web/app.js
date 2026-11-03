@@ -19,6 +19,7 @@
   const ANONYMIZE_CATEGORY_LABELS = {
     email: "Email",
     telefono: "Telefono",
+    nomi: "Nome e cognome",
     "codice-fiscale": "Codice fiscale",
     "partita-iva": "Partita IVA",
     testo: "Testo cercato"

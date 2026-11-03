@@ -179,6 +179,7 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertNotIn(b"Contattaci", response.data)
         self.assertIn(b'value="images-to-pdf"', response.data)
         self.assertIn(b'value="anonymize"', response.data)
+        self.assertIn(b'name="anonymize-category" value="nomi" checked', response.data)
         self.assertIn(b"Converti immagini in PDF", response.data)
         self.assertIn(b'value="documents-to-pdf"', response.data)
         self.assertIn(b'value="docx-to-pdf"', response.data)
@@ -597,6 +598,37 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertFalse(result["hasExtractableText"])
         self.assertEqual(result["suggestions"], [])
         self.assertTrue(result["pages"][0]["image"])
+
+    def test_anonymization_phone_matching_avoids_dates_and_finds_names(self):
+        source_document = fitz.open()
+        page = source_document.new_page(width=500, height=400)
+        page.insert_text((30, 40), "Telefono 333 123 4567")
+        page.insert_text((30, 80), "Ufficio 02 1234 5678")
+        page.insert_text((30, 120), "D.Lgs. 33/2013")
+        page.insert_text((30, 160), "Decreto 2023 2024 2025")
+        page.insert_text((30, 200), "Data 01.02.2023")
+        page.insert_text((30, 240), "Data 12/03/2024")
+        page.insert_text((30, 280), "MARIO ROSSI")
+        page.insert_text((30, 320), "Maria Chiara Bianchi")
+        source = io.BytesIO()
+        source_document.save(source)
+        source_document.close()
+
+        response = self.post(
+            "/api/anonymize-preview",
+            {
+                "file": self.upload("Names-and-numbers.pdf", source.getvalue()),
+                "categories": json.dumps(["telefono", "nomi"]),
+                "terms": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        suggestions = json.loads(response.data)["suggestions"]
+        phones = {item["text"] for item in suggestions if item["category"] == "telefono"}
+        names = {item["text"] for item in suggestions if item["category"] == "nomi"}
+        self.assertEqual(phones, {"333 123 4567", "02 1234 5678"})
+        self.assertEqual(names, {"MARIO ROSSI", "Maria Chiara Bianchi"})
 
     def test_anonymization_rejects_invalid_categories_and_redaction_areas(self):
         invalid_categories = self.post(
