@@ -101,9 +101,3 @@ intended for local development, not as a production server. Before public use,
 confirm the hosting upload limit and Python package installation support with
 HeliHost. Uploaded PDFs are sent to the server for processing, so use HTTPS
 and only publish the service on a plan with suitable resource limits.
-
-## Legacy Java application
-
-The original Java desktop application and Maven files remain in the repository.
-They are separate from the Flask website backend; Java is not required to run
-the Flask app.
