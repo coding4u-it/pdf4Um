@@ -19,12 +19,12 @@ if _VENDOR_DIR.is_dir():
     sys.path.insert(0, str(_VENDOR_DIR))
 
 import xml.etree.ElementTree as ET
-from xml.sax.saxutils import escape
 
 import mammoth
 import reportlab
 import pymupdf as fitz
 from docx import Document
+from docx.shared import Pt
 from docx.text.paragraph import Paragraph as DocxParagraph
 from xhtml2pdf import pisa
 from flask import Flask, Response, abort, jsonify, request, send_file
@@ -49,19 +49,9 @@ MAX_DOCUMENT_ARCHIVE_ENTRIES = 10_000
 A4_WIDTH = 595.275590551
 A4_HEIGHT = 841.88976378
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
-SUPPORTED_DOCUMENT_SUFFIXES = {".docx", ".odt"}
 
 # Namespaces per DOCX
 DOCX_NAMESPACE = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-
-# Namespaces per ODT
-ODT_TEXT_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
-ODT_TABLE_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:table:1.0}"
-ODT_OFFICE_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:office:1.0}"
-ODT_DRAW_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:drawing:1.0}"
-ODT_XLINK_NAMESPACE = "{http://www.w3.org/1999/xlink}"
-ODT_STYLE_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:style:1.0}"
-ODT_FO_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0}"
 
 RANDOM_ALPHABET = "[]()abcdefghijklmnopqrstuvwxyz#.&0123456789$£€,ABCDEFGHIJKLMNOPQRSTUVWXYZ@"
 PHONE_CANDIDATE_PATTERN = re.compile(
@@ -188,7 +178,7 @@ def create_app() -> Flask:
     def api(operation: str):
         if operation not in {
             "split", "merge", "rename", "encrypt", "extract-text", "images-to-pdf",
-            "documents-to-pdf", "anonymize-preview", "anonymize",
+            "docx-to-pdf", "pdf-to-docx", "anonymize-preview", "anonymize",
         }:
             abort(404)
         if request.method != "POST":
@@ -353,10 +343,20 @@ def _run_operation(operation: str, workspace: Path) -> Response:
         _images_to_pdf(uploads, output)
         return _file_response(output, workspace, "application/pdf")
 
-    if operation == "documents-to-pdf":
-        upload = _save_document_upload(input_directory)
-        output = _document_to_pdf(upload, workspace)
+    if operation == "docx-to-pdf":
+        upload = _save_docx_upload(input_directory)
+        output = _docx_to_pdf(upload, workspace)
         return _file_response(output, workspace, "application/pdf")
+
+    if operation == "pdf-to-docx":
+        uploads = _save_uploads("file", 1, 1, input_directory)
+        _readable_pdfs(uploads)
+        output = _pdf_to_docx(uploads[0], workspace)
+        return _file_response(
+            output,
+            workspace,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
 
     uploads = _save_uploads("file", 1, 1, input_directory)
     reader = _readable_pdfs(uploads)[0]
@@ -419,15 +419,15 @@ def _save_image_uploads(directory: Path) -> list[Path]:
     return files
 
 
-def _save_document_upload(directory: Path) -> Path:
+def _save_docx_upload(directory: Path) -> Path:
     parts = request.files.getlist("file")
     if len(parts) != 1 or not parts[0].filename or not parts[0].filename.strip():
-        raise ApiProblem(400, "Select exactly one DOCX or ODT file.")
+        raise ApiProblem(400, "Select exactly one DOCX file.")
 
     supplied_name = parts[0].filename.replace("\\", "/").rsplit("/", 1)[-1]
     suffix = Path(supplied_name).suffix.lower()
-    if suffix not in SUPPORTED_DOCUMENT_SUFFIXES:
-        raise ApiProblem(415, "Only DOCX and ODT documents are supported.")
+    if suffix != ".docx":
+        raise ApiProblem(415, "Only DOCX documents are supported.")
 
     base = re.sub(r'[<>:"/\\|?*]', "_", supplied_name[:-len(Path(supplied_name).suffix)])
     base = "".join(char for char in base if ord(char) >= 32 and ord(char) != 127).strip()
@@ -439,16 +439,13 @@ def _save_document_upload(directory: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# CONVERSIONE DOCUMENTI (DOCX / ODT) -> PDF
+# CONVERSIONE DOCX -> PDF
 # ---------------------------------------------------------------------------
 
-def _document_to_pdf(source: Path, workspace: Path) -> Path:
+def _docx_to_pdf(source: Path, workspace: Path) -> Path:
     output = workspace / f"{source.stem}.pdf"
     try:
-        if source.suffix.lower() == ".docx":
-            html, page_css = _docx_to_html(source)
-        else:
-            html, page_css = _odt_to_html(source)
+        html, page_css = _docx_to_html(source)
 
         if not html.strip():
             raise ValueError("The document has no supported content.")
@@ -461,8 +458,65 @@ def _document_to_pdf(source: Path, workspace: Path) -> Path:
     except ApiProblem:
         raise
     except Exception as error:
-        LOGGER.info("Document conversion failed for %s.", source.suffix)
-        raise ApiProblem(422, "The DOCX or ODT document could not be converted.") from error
+        LOGGER.info("DOCX conversion failed.")
+        raise ApiProblem(422, "The DOCX document could not be converted.") from error
+    return output
+
+
+def _pdf_to_docx(source: Path, workspace: Path) -> Path:
+    output = workspace / f"{source.stem}.docx"
+    document = Document()
+    has_text = False
+    try:
+        with fitz.open(source) as pdf:
+            for page_index, page in enumerate(pdf):
+                if page_index:
+                    document.add_page_break()
+                blocks = page.get_text("dict", sort=True)["blocks"]
+                for block in blocks:
+                    if block.get("type") != 0:
+                        continue
+                    lines = block.get("lines", [])
+                    if not any(
+                        span.get("text", "").strip()
+                        for line in lines
+                        for span in line.get("spans", [])
+                    ):
+                        continue
+                    paragraph = document.add_paragraph()
+                    for line_index, line in enumerate(lines):
+                        line_has_text = False
+                        for span in line.get("spans", []):
+                            text = span.get("text", "")
+                            if not text:
+                                continue
+                            run = paragraph.add_run(text)
+                            flags = span.get("flags", 0)
+                            run.bold = bool(flags & 16)
+                            run.italic = bool(flags & 2)
+                            size = span.get("size")
+                            if (
+                                isinstance(size, (int, float))
+                                and math.isfinite(size)
+                                and 1 <= size <= 96
+                            ):
+                                run.font.size = Pt(size)
+                            line_has_text = True
+                            has_text = has_text or bool(text.strip())
+                        if line_has_text and line_index < len(lines) - 1:
+                            paragraph.add_run().add_break()
+
+        if not has_text:
+            raise ApiProblem(
+                422,
+                "The PDF contains no extractable text. Scanned documents require OCR.",
+            )
+        document.save(output)
+    except ApiProblem:
+        raise
+    except Exception as error:
+        LOGGER.info("PDF to DOCX conversion failed.")
+        raise ApiProblem(422, "The PDF could not be converted to DOCX.") from error
     return output
 
 
@@ -829,146 +883,6 @@ def _docx_to_html(source: Path) -> tuple[str, str]:
         css_rules.insert(0, font_faces)
     page_css = _docx_page_css(source) + "\n" + "\n".join(css_rules)
     return result.value, page_css
-
-
-# --- Funzioni specifiche per ODT ---
-
-def _odt_page_css(source: Path) -> str:
-    with zipfile.ZipFile(source) as archive:
-        for member in ("styles.xml", "content.xml"):
-            try:
-                root = ET.fromstring(archive.read(member))
-            except KeyError:
-                continue
-            layout = root.find(f".//{ODT_STYLE_NAMESPACE}page-layout/{ODT_STYLE_NAMESPACE}page-layout-properties")
-            if layout is None:
-                continue
-
-            def to_in(val, default):
-                if not val: return default
-                factors = {"cm": 0.393701, "mm": 0.0393701, "in": 1.0, "pt": 0.0138889, "pc": 0.166667}
-                for unit, factor in sorted(factors.items(), key=lambda x: -len(x[0])):
-                    if val.endswith(unit):
-                        return float(val[:-len(unit)]) * factor
-                return float(val) / 72.0
-
-            w = to_in(layout.get(f"{ODT_FO_NAMESPACE}page-width"), 8.27)
-            h = to_in(layout.get(f"{ODT_FO_NAMESPACE}page-height"), 11.69)
-            t = to_in(layout.get(f"{ODT_FO_NAMESPACE}margin-top"), 0.79)
-            b = to_in(layout.get(f"{ODT_FO_NAMESPACE}margin-bottom"), 0.79)
-            l = to_in(layout.get(f"{ODT_FO_NAMESPACE}margin-left"), 0.79)
-            r = to_in(layout.get(f"{ODT_FO_NAMESPACE}margin-right"), 0.79)
-            return f"@page {{ size: {w}in {h}in; margin: {t}in {r}in {b}in {l}in; }}"
-    return "@page { size: A4; margin: 2cm; }"
-
-
-def _extract_odt_styles(root: ET.Element) -> dict:
-    styles = {}
-    for style in root.findall(f".//{ODT_STYLE_NAMESPACE}style"):
-        if style.get(f"{ODT_STYLE_NAMESPACE}family") == "text":
-            name = style.get(f"{ODT_STYLE_NAMESPACE}name")
-            props = style.find(f"{ODT_STYLE_NAMESPACE}text-properties")
-            if name and props is not None:
-                info = {}
-                if props.get(f"{ODT_FO_NAMESPACE}font-weight") == "bold":
-                    info["bold"] = True
-                if props.get(f"{ODT_FO_NAMESPACE}font-style") == "italic":
-                    info["italic"] = True
-                if props.get(f"{ODT_STYLE_NAMESPACE}text-underline-style", "none") != "none":
-                    info["underline"] = True
-                styles[name] = info
-    return styles
-
-
-def _odt_to_html(source: Path) -> tuple[str, str]:
-    page_css = _odt_page_css(source)
-    with zipfile.ZipFile(source) as archive:
-        root = ET.fromstring(archive.read("content.xml"))
-        styles_root = root
-        try:
-            styles_root = ET.fromstring(archive.read("styles.xml"))
-        except KeyError:
-            pass
-
-        text_styles = _extract_odt_styles(styles_root)
-        text_styles.update(_extract_odt_styles(root))
-
-        body = root.find(f".//{ODT_OFFICE_NAMESPACE}body/{ODT_OFFICE_NAMESPACE}text")
-        if body is None:
-            raise ValueError("The ODT body is missing.")
-
-        html = _odt_blocks_to_html(body, archive, text_styles)
-    return html, page_css
-
-
-def _odt_blocks_to_html(element: ET.Element, archive: zipfile.ZipFile, text_styles: dict) -> str:
-    html = []
-    for child in element:
-        if child.tag in {f"{ODT_TEXT_NAMESPACE}p", f"{ODT_TEXT_NAMESPACE}h"}:
-            tag = "h2" if child.tag == f"{ODT_TEXT_NAMESPACE}h" else "p"
-            inline_html = _odt_inline_to_html(child, archive, text_styles)
-            html.append(f"<{tag}>{inline_html}</{tag}>")
-
-        elif child.tag == f"{ODT_TEXT_NAMESPACE}list":
-            html.append("<ul>")
-            for item in child.findall(f"{ODT_TEXT_NAMESPACE}list-item"):
-                html.append("<li>")
-                html.append(_odt_blocks_to_html(item, archive, text_styles))
-                html.append("</li>")
-            html.append("</ul>")
-
-        elif child.tag == f"{ODT_TABLE_NAMESPACE}table":
-            html.append("<table>")
-            for row in child.findall(f"{ODT_TABLE_NAMESPACE}table-row"):
-                html.append("<tr>")
-                for cell in row:
-                    if cell.tag in {f"{ODT_TABLE_NAMESPACE}table-cell", f"{ODT_TABLE_NAMESPACE}covered-table-cell"}:
-                        html.append("<td>")
-                        html.append(_odt_blocks_to_html(cell, archive, text_styles))
-                        html.append("</td>")
-                html.append("</tr>")
-            html.append("</table>")
-    return "".join(html)
-
-
-def _odt_inline_to_html(element: ET.Element, archive: zipfile.ZipFile, text_styles: dict) -> str:
-    def render(node: ET.Element) -> str:
-        if node.tag == f"{ODT_TEXT_NAMESPACE}s":
-            count = min(int(node.get(f"{ODT_TEXT_NAMESPACE}c", "1")), 100)
-            return "&#160;" * count
-        if node.tag == f"{ODT_TEXT_NAMESPACE}tab":
-            return "&#160;&#160;&#160;&#160;"
-        if node.tag == f"{ODT_TEXT_NAMESPACE}line-break":
-            return "<br/>"
-        
-        if node.tag == f"{ODT_TEXT_NAMESPACE}span":
-            style_name = node.get(f"{ODT_TEXT_NAMESPACE}style-name")
-            content = "".join([escape(node.text or "")] + [render(c) + escape(c.tail or "") for c in node])
-            style = text_styles.get(style_name, {})
-            if style.get("bold"): content = f"<b>{content}</b>"
-            if style.get("italic"): content = f"<i>{content}</i>"
-            if style.get("underline"): content = f"<u>{content}</u>"
-            return content
-
-        if node.tag == f"{ODT_DRAW_NAMESPACE}frame":
-            image = node.find(f"{ODT_DRAW_NAMESPACE}image")
-            if image is not None:
-                href = image.get(f"{ODT_XLINK_NAMESPACE}href")
-                if href and href in archive.namelist():
-                    data = archive.read(href)
-                    ext = href.split(".")[-1].lower()
-                    mime = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png" if ext == "png" else "image/gif"
-                    b64 = base64.b64encode(data).decode("ascii")
-                    return f'<img src="data:{mime};base64,{b64}" style="max-width: 100%;" />'
-            return ""
-
-        parts = [escape(node.text or "")]
-        for child in node:
-            parts.append(render(child))
-            parts.append(escape(child.tail or ""))
-        return "".join(parts)
-
-    return render(element)
 
 
 # --- HTML to PDF (Comune) ---

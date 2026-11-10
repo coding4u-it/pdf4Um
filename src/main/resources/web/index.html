@@ -116,17 +116,17 @@
           </span>
         </label>
         <label class="operation-option">
-          <input type="radio" name="operation" value="documents-to-pdf">
-          <span class="operation-content">
-            <svg class="operation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3.75h8l4 4v12.5H6z"/><path d="M14 3.75v4h4M9 12h6M9 15h6M9 18h4"/></svg>
-            <span class="operation-label">ODT in PDF</span>
-          </span>
-        </label>
-        <label class="operation-option">
           <input type="radio" name="operation" value="docx-to-pdf">
           <span class="operation-content">
             <svg class="operation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3.75h8l4 4v12.5H6z"/><path d="M14 3.75v4h4M9 12h6M9 15h6M9 18h4"/></svg>
             <span class="operation-label">DOCX in PDF</span>
+          </span>
+        </label>
+        <label class="operation-option">
+          <input type="radio" name="operation" value="pdf-to-docx">
+          <span class="operation-content">
+            <svg class="operation-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3.75h8l4 4v12.5H6z"/><path d="M14 3.75v4h4M9 12h6M9 15h6M9 18h4"/></svg>
+            <span class="operation-label">PDF in DOCX</span>
           </span>
         </label>
       </fieldset>
@@ -273,14 +273,14 @@
         <p>Seleziona immagini JPG o PNG: verranno unite in un unico PDF multipagina, nell'ordine mostrato. Ogni immagine viene adattata proporzionalmente a una pagina A4, senza ritagli.</p>
       </section>
 
-      <section class="settings-panel" data-panel="documents-to-pdf" aria-labelledby="documents-to-pdf-heading" hidden>
-        <h3 id="documents-to-pdf-heading">Converti ODT in PDF</h3>
-        <p>Seleziona un documento ODT. La conversione mantiene testo, titoli, paragrafi, elenchi e tabelle semplici; l'impaginazione e la formattazione avanzata possono differire dall'originale.</p>
-      </section>
-
       <section class="settings-panel" data-panel="docx-to-pdf" aria-labelledby="docx-to-pdf-heading" hidden>
         <h3 id="docx-to-pdf-heading">Converti DOCX in PDF</h3>
         <p>Seleziona un documento DOCX. La conversione mantiene dimensioni pagina, margini, elenchi e molti stili di paragrafo e carattere. I font non incorporati possono essere sostituiti e l'impaginazione complessa può differire dall'originale. Il documento viene elaborato sul server e rimosso al termine della richiesta.</p>
+      </section>
+
+      <section class="settings-panel" data-panel="pdf-to-docx" aria-labelledby="pdf-to-docx-heading" hidden>
+        <h3 id="pdf-to-docx-heading">Converti PDF in DOCX</h3>
+        <p>Estrae il testo selezionabile dal PDF e lo inserisce in un documento Word modificabile, mantenendo in modo approssimativo i paragrafi, le pagine e alcuni stili. L'impaginazione, le immagini e le tabelle potrebbero non corrispondere all'originale. I PDF composti da scansioni richiedono OCR e non sono supportati.</p>
       </section>
 
       <div class="action-row">

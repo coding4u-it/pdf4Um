@@ -9,12 +9,11 @@
     extract: "Estrai testo",
     anonymize: "Anonimizza PDF",
     "images-to-pdf": "Converti in PDF",
-    "documents-to-pdf": "Converti ODT in PDF",
-    "docx-to-pdf": "Converti DOCX in PDF"
+    "docx-to-pdf": "Converti DOCX in PDF",
+    "pdf-to-docx": "Converti PDF in DOCX"
   };
   const MAX_FILES = 32;
   const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
-  const ODT_EXTENSIONS = [".odt"];
   const DOCX_EXTENSIONS = [".docx"];
   const ANONYMIZE_CATEGORY_LABELS = {
     email: "Email",
@@ -26,7 +25,6 @@
   };
   const PDF_ACCEPT = ".pdf,application/pdf";
   const IMAGE_ACCEPT = ".jpg,.jpeg,.png,image/jpeg,image/png";
-  const ODT_ACCEPT = ".odt,application/vnd.oasis.opendocument.text";
   const DOCX_ACCEPT = ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
   const state = {
@@ -140,13 +138,15 @@
           ? "Sono supportate solo immagini JPG e PNG."
           : currentOperation() === "docx-to-pdf"
             ? "Con questa operazione puoi selezionare solo un file DOCX."
+            : currentOperation() === "pdf-to-docx"
+              ? "Con questa operazione puoi selezionare solo un file PDF."
             : documentOperation
-              ? "È supportato un solo documento ODT o DOCX."
+              ? "Con questa operazione puoi selezionare un solo documento."
             : "Per questa operazione seleziona solo file PDF.");
       }
       if (excessFiles > 0) {
         messages.push(documentOperation
-          ? "Seleziona un solo documento ODT o DOCX."
+          ? "Seleziona un solo documento."
           : "Puoi selezionare al massimo 32 file per operazione.");
       }
       elements.resultError.textContent = messages.join(" ");
@@ -154,13 +154,12 @@
   }
 
   function isDocumentOperation(operation) {
-    return operation === "documents-to-pdf" || operation === "docx-to-pdf";
+    return operation === "docx-to-pdf" || operation === "pdf-to-docx";
   }
 
   function isSupportedFile(file, imageOperation, operation) {
     const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
     if (imageOperation) return IMAGE_EXTENSIONS.includes(extension);
-    if (operation === "documents-to-pdf") return ODT_EXTENSIONS.includes(extension);
     if (operation === "docx-to-pdf") return DOCX_EXTENSIONS.includes(extension);
     return extension === ".pdf";
   }
@@ -305,16 +304,16 @@
     elements.picker.accept = imageOperation
       ? IMAGE_ACCEPT
       : operation === "docx-to-pdf" ? DOCX_ACCEPT
-        : operation === "documents-to-pdf" ? ODT_ACCEPT : PDF_ACCEPT;
+        : PDF_ACCEPT;
     elements.pickerTitle.textContent = imageOperation
       ? "Scegli immagini"
       : operation === "docx-to-pdf" ? "Scegli DOCX"
-        : operation === "documents-to-pdf" ? "Scegli ODT" : "Scegli PDF";
+        : "Scegli PDF";
     elements.pickerHelp.textContent = imageOperation
       ? "JPG o PNG · massimo 32 immagini e 100 MiB complessivi"
       : operation === "docx-to-pdf" ? "Un file DOCX · massimo 100 MiB"
-        : operation === "documents-to-pdf" ? "Un file ODT · massimo 100 MiB"
-        : "Massimo 32 PDF e 100 MiB complessivi per operazione";
+        : operation === "pdf-to-docx" ? "Un file PDF · massimo 100 MiB"
+          : "Massimo 32 PDF e 100 MiB complessivi per operazione";
     elements.operationRadios.forEach((radio) => { radio.disabled = state.busy; });
     document.querySelectorAll(
       ".settings-panel input, .settings-panel textarea, .settings-panel select, .settings-panel button"
@@ -361,11 +360,11 @@
     if (operation === "images-to-pdf") {
       return "Seleziona da una a 32 immagini JPG o PNG da convertire.";
     }
-    if (operation === "documents-to-pdf") {
-      return "Per convertire il documento, seleziona un solo file ODT.";
-    }
     if (operation === "docx-to-pdf") {
       return "Per convertire il documento, seleziona un solo file DOCX.";
+    }
+    if (operation === "pdf-to-docx") {
+      return "Per convertire il documento, seleziona un solo PDF.";
     }
     if (operation === "merge") return "Per unire i PDF, seleziona almeno due documenti e controlla il loro ordine.";
     if (operation === "rename") return "Per rinominare, seleziona uno o più PDF.";
@@ -409,9 +408,7 @@
         message: imageOperation
           ? "Seleziona solo immagini JPG o PNG."
           : operation === "docx-to-pdf"
-            ? "Seleziona solo un file DOCX."
-            : operation === "documents-to-pdf"
-              ? "Seleziona solo un file ODT."
+              ? "Seleziona solo un file DOCX."
               : "Seleziona solo file PDF."
       };
     }
@@ -443,10 +440,10 @@
       return { valid: false, message: "Seleziona un solo PDF da anonimizzare." };
     } else if (operation === "images-to-pdf" && state.files.length < 1) {
       return { valid: false, message: "Seleziona almeno un'immagine JPG o PNG da convertire." };
-    } else if (operation === "documents-to-pdf" && state.files.length !== 1) {
-      return { valid: false, message: "Seleziona un solo documento ODT da convertire." };
     } else if (operation === "docx-to-pdf" && state.files.length !== 1) {
       return { valid: false, message: "Seleziona un solo documento DOCX da convertire." };
+    } else if (operation === "pdf-to-docx" && state.files.length !== 1) {
+      return { valid: false, message: "Seleziona un solo PDF da convertire in DOCX." };
     }
     return { valid: true, message: operation === "merge"
       ? "I PDF saranno uniti nell'ordine mostrato nell'elenco."
@@ -540,9 +537,7 @@
     renderFiles();
 
     try {
-      const apiOperation = operation === "docx-to-pdf"
-        ? "documents-to-pdf"
-        : operation === "extract" ? "extract-text" : operation;
+      const apiOperation = operation === "extract" ? "extract-text" : operation;
       const response = await fetch("api/" + apiOperation, {
         method: "POST",
         body: formData
@@ -834,7 +829,7 @@
   function buildRequest(operation) {
     const formData = new FormData();
     const fileField = operation === "split" || operation === "extract" || operation === "anonymize" ||
-      operation === "documents-to-pdf" || operation === "docx-to-pdf"
+      operation === "docx-to-pdf" || operation === "pdf-to-docx"
       ? "file"
       : operation === "images-to-pdf" ? "images" : "files";
     state.files.forEach((file) => formData.append(fileField, file, file.name));
@@ -914,14 +909,18 @@
     } else if (response.status === 415) {
       elements.resultError.textContent = operation === "images-to-pdf"
         ? "Seleziona solo immagini JPG o PNG."
-        : operation === "documents-to-pdf" || operation === "docx-to-pdf"
-          ? "Seleziona un file DOCX o ODT valido."
+        : operation === "docx-to-pdf"
+          ? "Seleziona un file DOCX valido."
           : "Uno o più file non sono in formato PDF. Seleziona documenti PDF e riprova.";
     } else if (response.status === 422) {
       elements.resultError.textContent = operation === "images-to-pdf"
         ? "Una o più immagini non sono leggibili. Verifica che i file JPG o PNG siano validi."
-        : operation === "documents-to-pdf" || operation === "docx-to-pdf"
-          ? "Non è stato possibile convertire il documento. Verifica che il file DOCX o ODT sia valido."
+        : operation === "docx-to-pdf"
+          ? "Non è stato possibile convertire il documento. Verifica che il file DOCX sia valido."
+          : operation === "pdf-to-docx"
+            ? message.toLowerCase().includes("no extractable text")
+              ? "Il PDF non contiene testo estraibile. I documenti scansionati richiedono OCR."
+              : "Non è stato possibile leggere il PDF. Verifica che sia valido e non protetto da password."
           : "Non è stato possibile leggere " +
             (state.files.length === 1 ? "il PDF selezionato." : "uno dei PDF selezionati.") +
             " Verifica che il documento sia valido e non protetto da un'altra password.";
@@ -950,7 +949,8 @@
     if (operation === "rename") return "renamed-pdfs.zip";
     if (operation === "encrypt") return "encrypted-pdfs.zip";
     if (operation === "images-to-pdf") return "immagini.pdf";
-    if (operation === "documents-to-pdf" || operation === "docx-to-pdf") return "documento.pdf";
+    if (operation === "pdf-to-docx") return "documento.docx";
+    if (operation === "docx-to-pdf") return "documento.pdf";
     return "testo-estratto.txt";
   }
 

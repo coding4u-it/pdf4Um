@@ -82,59 +82,6 @@ def make_docx() -> bytes:
     return output.getvalue()
 
 
-def make_odt() -> bytes:
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr(
-            "mimetype",
-            "application/vnd.oasis.opendocument.text",
-            compress_type=zipfile.ZIP_STORED,
-        )
-        archive.writestr(
-            "content.xml",
-            '''<?xml version="1.0" encoding="UTF-8"?>
-            <office:document-content
-              xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
-              xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
-              xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
-              xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
-              office:version="1.2">
-              <office:body><office:text>
-                <text:h text:outline-level="1">Titolo documento</text:h>
-                <text:p>Testo <text:span>di prova</text:span></text:p>
-                <text:list text:style-name="Numbered">
-                  <text:list-item><text:p>Elemento elenco</text:p></text:list-item>
-                </text:list>
-                <table:table>
-                  <table:table-header-rows><table:table-row>
-                    <table:table-cell><text:p>Prima colonna</text:p></table:table-cell>
-                    <table:table-cell><text:p>Seconda colonna</text:p></table:table-cell>
-                  </table:table-row></table:table-header-rows>
-                  <table:table-row-group><table:table-row>
-                    <table:table-cell><text:p>Terza colonna</text:p></table:table-cell>
-                    <table:table-cell><text:p>Quarta colonna</text:p></table:table-cell>
-                  </table:table-row></table:table-row-group>
-                </table:table>
-              </office:text></office:body>
-            </office:document-content>''',
-        )
-        archive.writestr(
-            "styles.xml",
-            '''<?xml version="1.0" encoding="UTF-8"?>
-            <office:document-styles
-              xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
-              xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
-              xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0">
-              <office:styles>
-                <text:list-style style:name="Numbered">
-                  <text:list-level-style-number text:level="1" style:num-format="1"/>
-                </text:list-style>
-              </office:styles>
-            </office:document-styles>''',
-        )
-    return output.getvalue()
-
-
 class PdfWorkbenchTest(unittest.TestCase):
     def setUp(self):
         web_directory = Path(__file__).parents[1] / "src" / "main" / "resources" / "web"
@@ -181,8 +128,12 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertIn(b'value="anonymize"', response.data)
         self.assertIn(b'name="anonymize-category" value="nomi" checked', response.data)
         self.assertIn(b"Converti immagini in PDF", response.data)
-        self.assertIn(b'value="documents-to-pdf"', response.data)
         self.assertIn(b'value="docx-to-pdf"', response.data)
+        self.assertIn(b'value="pdf-to-docx"', response.data)
+        self.assertNotIn(b"ODT", response.data)
+        self.assertNotIn(b"ODT in PDF", response.data)
+        self.assertNotIn(b"documents-to-pdf", response.data)
+        self.assertIn(b"Converti PDF in DOCX", response.data)
         self.assertIn(b"Converti DOCX in PDF", response.data)
         self.assertIn(b"Il documento viene elaborato sul server", response.data)
         self.assertNotIn(b"docx-preview@", response.data)
@@ -330,29 +281,22 @@ class PdfWorkbenchTest(unittest.TestCase):
         )
         self.assertEqual(unreadable.status_code, 422)
 
-    def test_converts_docx_and_odt_documents_to_pdf(self):
-        for filename, content in (
-            ("Report.docx", make_docx()),
-            ("Report.odt", make_odt()),
-        ):
-            with self.subTest(filename=filename):
-                response = self.post(
-                    "/api/documents-to-pdf",
-                    {"file": self.upload(filename, content)},
-                )
+    def test_converts_docx_to_pdf(self):
+        response = self.post(
+            "/api/docx-to-pdf",
+            {"file": self.upload("Report.docx", make_docx())},
+        )
 
-                self.assertEqual(response.status_code, 200)
-                self.assertEqual(response.mimetype, "application/pdf")
-                self.assertIn("Report.pdf", response.headers["Content-Disposition"])
-                reader = PdfReader(io.BytesIO(response.data))
-                self.assertGreaterEqual(len(reader.pages), 1)
-                extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
-                self.assertIn("Titolo documento", extracted_text)
-                self.assertIn("Testo di prova", extracted_text)
-                self.assertIn("Prima colonna", extracted_text)
-                self.assertIn("Seconda colonna", extracted_text)
-                if filename.endswith(".odt"):
-                    self.assertIn("Elemento elenco", extracted_text)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "application/pdf")
+        self.assertIn("Report.pdf", response.headers["Content-Disposition"])
+        reader = PdfReader(io.BytesIO(response.data))
+        self.assertGreaterEqual(len(reader.pages), 1)
+        extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        self.assertIn("Titolo documento", extracted_text)
+        self.assertIn("Testo di prova", extracted_text)
+        self.assertIn("Prima colonna", extracted_text)
+        self.assertIn("Seconda colonna", extracted_text)
 
     def test_docx_conversion_preserves_run_font_sizes_and_emphasis(self):
         document = pdf4um_app.Document()
@@ -372,7 +316,7 @@ class PdfWorkbenchTest(unittest.TestCase):
             source = workspace / "styles.docx"
             document.save(source)
             html, css = pdf4um_app._docx_to_html(source)
-            output = pdf4um_app._document_to_pdf(source, workspace)
+            output = pdf4um_app._docx_to_pdf(source, workspace)
 
             page = PdfReader(output).pages[0]
             styled_runs = {}
@@ -401,7 +345,7 @@ class PdfWorkbenchTest(unittest.TestCase):
             source = workspace / "heading.docx"
             document.save(source)
             html, css = pdf4um_app._docx_to_html(source)
-            output = pdf4um_app._document_to_pdf(source, workspace)
+            output = pdf4um_app._docx_to_pdf(source, workspace)
 
             text_runs = []
             PdfReader(output).pages[0].extract_text(
@@ -429,43 +373,69 @@ class PdfWorkbenchTest(unittest.TestCase):
         self.assertIn("1) Primo elemento", text)
         self.assertIn("2) Secondo elemento", text)
 
-    def test_odt_conversion_preserves_numbered_lists_and_grouped_table_rows(self):
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            source = Path(temporary_directory) / "Report.odt"
-            source.write_bytes(make_odt())
-
-            html, _ = pdf4um_app._odt_to_html(source)
+    def test_pdf_to_docx_extracts_text_and_preserves_page_breaks(self):
+        source = fitz.open()
+        first_page = source.new_page()
+        first_page.insert_text((50, 80), "Titolo da PDF", fontname="hebo", fontsize=18)
+        first_page.insert_text((50, 110), "Testo modificabile", fontsize=12)
+        second_page = source.new_page()
+        second_page.insert_text((50, 80), "Seconda pagina", fontsize=12)
+        pdf_bytes = source.tobytes()
+        source.close()
 
         response = self.post(
-            "/api/documents-to-pdf",
-            {"file": self.upload("Report.odt", make_odt())},
+            "/api/pdf-to-docx",
+            {"file": self.upload("Report.pdf", pdf_bytes)},
         )
 
-        self.assertIn("<ol>", html)
-        self.assertIn("</ol>", html)
-        self.assertEqual(html.count("<tr>"), 2)
-        self.assertIn("Prima colonna", html)
-        self.assertIn("Seconda colonna", html)
-        self.assertIn("Terza colonna", html)
-        self.assertIn("Quarta colonna", html)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.mimetype, "application/pdf")
-        extracted_text = "\n".join(
-            page.extract_text() or "" for page in PdfReader(io.BytesIO(response.data)).pages
+        self.assertEqual(
+            response.mimetype,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
-        self.assertIn("Elemento elenco", extracted_text)
-        self.assertIn("Seconda colonna", extracted_text)
-        self.assertIn("Quarta colonna", extracted_text)
+        self.assertIn("Report.docx", response.headers["Content-Disposition"])
+        converted = pdf4um_app.Document(io.BytesIO(response.data))
+        self.assertEqual(
+            [paragraph.text for paragraph in converted.paragraphs if paragraph.text],
+            ["Titolo da PDF", "Testo modificabile", "Seconda pagina"],
+        )
+        self.assertTrue(converted.paragraphs[0].runs[0].bold)
+        self.assertTrue(any(
+            br.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}type") == "page"
+            for br in converted._element.body.iter(
+                "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}br"
+            )
+        ))
 
-    def test_document_conversion_rejects_unsupported_and_invalid_files(self):
+    def test_pdf_to_docx_rejects_invalid_and_scanned_pdfs(self):
+        invalid = self.post(
+            "/api/pdf-to-docx",
+            {"file": self.upload("invalid.pdf", b"not a PDF")},
+        )
+        self.assertEqual(invalid.status_code, 422)
+
+        no_text = self.post(
+            "/api/pdf-to-docx",
+            {"file": self.upload("scan.pdf", self.pdf)},
+        )
+        self.assertEqual(no_text.status_code, 422)
+        self.assertIn("no extractable text", no_text.json["error"])
+
+    def test_docx_conversion_rejects_unsupported_and_invalid_files(self):
         unsupported = self.post(
-            "/api/documents-to-pdf",
-            {"file": self.upload("report.pdf", self.pdf)},
+            "/api/docx-to-pdf",
+            {"file": self.upload("report.odt", b"not supported")},
         )
         self.assertEqual(unsupported.status_code, 415)
 
-        invalid = self.post(
+        removed_odt_api = self.post(
             "/api/documents-to-pdf",
+            {"file": self.upload("report.odt", b"not supported")},
+        )
+        self.assertEqual(removed_odt_api.status_code, 404)
+
+        invalid = self.post(
+            "/api/docx-to-pdf",
             {"file": self.upload("report.docx", b"not a DOCX archive")},
         )
         self.assertEqual(invalid.status_code, 422)
